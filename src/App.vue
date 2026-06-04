@@ -3,6 +3,7 @@ import { useAppStore } from './stores/appStore'
 import AppHeader from './components/layout/AppHeader.vue'
 import AppSidebar from './components/layout/AppSidebar.vue'
 import PropertyPanel from './components/layout/PropertyPanel.vue'
+import GeoJsonEditor from './components/tools/GeoJsonEditor.vue'
 import MapContainer from './components/map/MapContainer.vue'
 
 const store = useAppStore()
@@ -15,8 +16,13 @@ const store = useAppStore()
       <AppSidebar v-if="store.sidebarOpen" />
       <main class="flex-1 relative">
         <MapContainer />
+        <!-- 属性面板：浮动在地图右侧 -->
+        <PropertyPanel v-if="store.propertyPanelOpen" />
       </main>
-      <PropertyPanel v-if="store.propertyPanelOpen" />
+      <!-- GeoJSON 编辑器：独立右侧面板 -->
+      <aside v-if="store.geoEditorOpen" class="w-80 bg-gray-800 border-l border-gray-700 flex flex-col overflow-hidden shrink-0">
+        <GeoJsonEditor />
+      </aside>
     </div>
   </div>
 </template>
