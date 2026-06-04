@@ -203,7 +203,7 @@ const treeData = computed(() => {
           </button>
           <!-- 导入 -->
           <input ref="fileInput" :key="fileInputKey" type="file" accept=".geojson,.json,.kml,.csv" @change="handleImport" class="hidden" />
-          <button @click="fileInput?.click()" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="导入文件">
+          <button @click="fileInput?.click()" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="导入文件（GeoJSON/KML/CSV，自动转为GeoJSON）">
             <Upload :size="12" />
           </button>
           <!-- 导出 -->
@@ -228,7 +228,7 @@ const treeData = computed(() => {
         <JsonTreeNode :node="treeData" :collapsed-paths="collapsedPaths" :depth="0" @toggle="toggleCollapse" />
       </div>
       <div v-else class="text-gray-500 text-center py-8">
-        暂无数据，点击 <Upload :size="10" class="inline" /> 导入文件或绘制要素
+        暂无数据，点击导入文件（支持KML/CSV自动转GeoJSON）或绘制要素
       </div>
     </div>
 
