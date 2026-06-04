@@ -1,22 +1,16 @@
 import proj4 from 'proj4'
 import { projections } from '../data/projections'
 
-// 初始化所有投影定义
 Object.entries(projections).forEach(([code, def]) => {
   proj4.defs(code, def.proj4)
 })
 
-export function transformCoord(
-  coord: [number, number],
-  from: string,
-  to: string,
-): [number, number] {
+export function transformCoord(coord: [number, number], from: string, to: string): [number, number] {
   if (from === to) return coord
   const result = proj4(from, to, coord)
   return [result[0], result[1]]
 }
 
-// WGS84 <-> GCJ02 转换（火星坐标系）
 const PI = Math.PI
 const A = 6378245.0
 const EE = 0.00669342162296594323

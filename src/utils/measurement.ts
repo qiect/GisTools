@@ -21,7 +21,3 @@ export function calcBearing(start: [number, number], end: [number, number]): num
   const point2 = turf.point(end)
   return turf.bearing(point1, point2)
 }
-
-export function formatCoord(lng: number, lat: number): string {
-  return `${lat.toFixed(6)}, ${lng.toFixed(6)}`
-}

@@ -56,27 +56,3 @@ export type ToolMode =
   | 'batch-coord'
   | 'gpx-viewer'
   | 'layers'
-
-export interface AppState {
-  toolMode: ToolMode
-  layers: GeoLayer[]
-  activeLayerId: string | null
-  drawFeatures: DrawFeature[]
-  measureResults: MeasureResult[]
-  sidebarOpen: boolean
-  propertyPanelOpen: boolean
-  selectedFeature: DrawFeature | null
-  setToolMode: (mode: ToolMode) => void
-  addLayer: (layer: GeoLayer) => void
-  removeLayer: (id: string) => void
-  toggleLayerVisibility: (id: string) => void
-  updateLayerOpacity: (id: string, opacity: number) => void
-  setActiveLayerId: (id: string | null) => void
-  addDrawFeature: (feature: DrawFeature) => void
-  removeDrawFeature: (id: string) => void
-  addMeasureResult: (result: MeasureResult) => void
-  clearMeasureResults: () => void
-  setSidebarOpen: (open: boolean) => void
-  setPropertyPanelOpen: (open: boolean) => void
-  setSelectedFeature: (feature: DrawFeature | null) => void
-}
