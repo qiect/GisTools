@@ -465,11 +465,16 @@ function processClick(mode: string, latlng: [number, number]) {
   if (mode === 'draw-rectangle') {
     drawTempPoints.push(latlng)
     if (drawTempPoints.length >= 2) {
-      const points = [...drawTempPoints]
       const id = `draw-${++featureCounter}`
-      const bounds = L.latLngBounds(points[0], points[1])
+      const bounds = L.latLngBounds(drawTempPoints[0], drawTempPoints[1])
+      // 展开为4个角点，确保 GeoJSON Polygon 坐标有效
+      const sw = bounds.getSouthWest()
+      const ne = bounds.getNorthEast()
+      const nw = bounds.getNorthWest()
+      const se = bounds.getSouthEast()
+      const corners: [number, number][] = [[nw.lat, nw.lng], [ne.lat, ne.lng], [se.lat, se.lng], [sw.lat, sw.lng]]
       L.rectangle(bounds, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
-      store.addDrawFeature({ id, type: 'rectangle', coordinates: points, properties: { name: `矩形 ${featureCounter}` }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+      store.addDrawFeature({ id, type: 'rectangle', coordinates: corners, properties: { name: `矩形 ${featureCounter}` }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
       drawTempPoints.length = 0
       clearPreview()
       drawHint.value = '矩形已绘制'
