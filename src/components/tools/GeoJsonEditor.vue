@@ -1,20 +1,25 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 import { useAppStore, getAllDrawFeaturesGeoJson } from '../../stores/appStore'
-import { FileJson, Play, RotateCcw, Copy, Check, X } from 'lucide-vue-next'
+import { parseKML, parseCSV, exportGeoJSON, downloadFile } from '../../utils/dataIO'
+import { FileJson, RotateCcw, Copy, Check, Pencil, Save, XCircle, Upload, Download } from 'lucide-vue-next'
 import JsonTreeNode from './JsonTreeNode.vue'
 
 const store = useAppStore()
 
 const editorText = ref('')
-const errorMsg = ref('')
 const copyFeedback = ref(false)
-const viewMode = ref<'tree' | 'text'>('tree')
+const importFeedback = ref(false)
+const editing = ref(false)
+const editText = ref('')
+const editError = ref('')
+const fileInput = ref<HTMLInputElement>()
+const fileInputKey = ref(0)
 
 // 计算当前 GeoJSON
 const currentGeoJson = computed(() => {
   if (store.drawFeatures.length > 0) {
-    return getAllDrawFeaturesGeoJson(store.drawFeatures)
+    return getAllDrawFeaturesGeoJson([...store.drawFeatures])
   }
   const geoLayers = store.layers.filter((l) => l.type === 'geojson')
   if (geoLayers.length > 0) {
@@ -26,33 +31,8 @@ const currentGeoJson = computed(() => {
   return { type: 'FeatureCollection', features: [] }
 })
 
-function resetEditor() {
+function syncEditorText() {
   editorText.value = JSON.stringify(currentGeoJson.value, null, 2)
-  errorMsg.value = ''
-}
-
-function applyGeoJson() {
-  try {
-    const parsed = JSON.parse(editorText.value)
-    if (!parsed.type) {
-      errorMsg.value = '无效的 GeoJSON：缺少 type 字段'
-      return
-    }
-    store.requestApplyGeoJson(parsed)
-    errorMsg.value = ''
-  } catch (e: any) {
-    errorMsg.value = `JSON 解析错误: ${e.message}`
-  }
-}
-
-function formatJson() {
-  try {
-    const parsed = JSON.parse(editorText.value)
-    editorText.value = JSON.stringify(parsed, null, 2)
-    errorMsg.value = ''
-  } catch (e: any) {
-    errorMsg.value = `JSON 格式化失败: ${e.message}`
-  }
 }
 
 function copyToClipboard() {
@@ -62,22 +42,91 @@ function copyToClipboard() {
   })
 }
 
-// 监听绘制要素变化
-watch(() => [...store.drawFeatures], () => {
-  const geojson = getAllDrawFeaturesGeoJson(store.drawFeatures)
-  if (geojson.features.length > 0) {
-    editorText.value = JSON.stringify(geojson, null, 2)
+function startEdit() {
+  editText.value = editorText.value
+  editError.value = ''
+  editing.value = true
+}
+
+function cancelEdit() {
+  editing.value = false
+  editError.value = ''
+}
+
+function saveEdit() {
+  try {
+    const parsed = JSON.parse(editText.value)
+    if (!parsed.type) {
+      editError.value = '无效的 GeoJSON：缺少 type 字段'
+      return
+    }
+    editorText.value = JSON.stringify(parsed, null, 2)
+    store.requestApplyGeoJson(parsed)
+    editing.value = false
+    editError.value = ''
+  } catch (e: any) {
+    editError.value = `JSON 解析错误: ${e.message}`
   }
+}
+
+// 导入文件
+async function handleImport(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+
+  try {
+    const text = await file.text()
+    let data: any
+    if (file.name.endsWith('.geojson') || file.name.endsWith('.json')) {
+      data = JSON.parse(text)
+    } else if (file.name.endsWith('.kml')) {
+      data = parseKML(text)
+    } else if (file.name.endsWith('.csv')) {
+      data = parseCSV(text)
+    } else {
+      editError.value = '不支持的文件格式'
+      return
+    }
+
+    // 加载到编辑器
+    editorText.value = JSON.stringify(data, null, 2)
+    store.requestApplyGeoJson(data)
+    importFeedback.value = true
+    setTimeout(() => { importFeedback.value = false }, 2000)
+  } catch (err: any) {
+    editError.value = `导入失败: ${err.message}`
+  }
+
+  fileInputKey.value++
+}
+
+// 导出文件
+function handleExport() {
+  try {
+    const parsed = JSON.parse(editorText.value)
+    const content = exportGeoJSON(parsed)
+    downloadFile(content, 'export.geojson', 'application/geo+json')
+  } catch {
+    editError.value = '导出失败：JSON 格式无效'
+  }
+}
+
+// 监听绘制要素变化
+watch(() => store.drawFeatures.length, () => {
+  nextTick(() => {
+    syncEditorText()
+  })
 })
 
 // 监听图层变化
-watch(() => [...store.layers], () => {
+watch(() => store.layers.length, () => {
   if (store.drawFeatures.length === 0) {
-    resetEditor()
+    syncEditorText()
   }
 })
 
-resetEditor()
+// 初始化
+syncEditorText()
 
 // ---- JSON 树形视图 ----
 const collapsedPaths = ref(new Set<string>())
@@ -134,51 +183,64 @@ const treeData = computed(() => {
 
 <template>
   <div class="flex flex-col h-full">
-    <div class="flex items-center justify-between px-3 py-2 border-b border-gray-700 shrink-0">
-      <div class="flex items-center gap-2">
-        <FileJson :size="14" class="text-emerald-400" />
-        <h2 class="text-xs font-semibold">JSON 编辑器</h2>
+    <div class="flex items-center justify-between px-3 py-1.5 border-b border-gray-700 shrink-0 min-h-[32px]">
+      <div class="flex items-center gap-1.5">
+        <FileJson :size="13" class="text-emerald-400" />
+        <span class="text-[11px] font-medium text-gray-200">JSON 编辑器</span>
+        <span v-if="importFeedback" class="text-[10px] text-emerald-400">已导入</span>
       </div>
-      <div class="flex items-center gap-1">
-        <button
-          @click="viewMode = viewMode === 'tree' ? 'text' : 'tree'"
-          class="px-2 py-0.5 text-[10px] rounded transition-colors"
-          :class="viewMode === 'tree' ? 'bg-emerald-600/30 text-emerald-400' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'"
-        >
-          {{ viewMode === 'tree' ? '树形' : '文本' }}
-        </button>
-        <button @click="resetEditor" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="重置">
-          <RotateCcw :size="12" />
-        </button>
-        <button @click="formatJson" class="px-2 py-0.5 text-[10px] bg-gray-700 hover:bg-gray-600 rounded text-gray-300 transition-colors">格式化</button>
-        <button @click="copyToClipboard" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="复制">
-          <Check v-if="copyFeedback" :size="12" class="text-emerald-400" />
-          <Copy v-else :size="12" />
-        </button>
-        <button @click="applyGeoJson" class="flex items-center gap-1 px-2 py-0.5 text-[10px] bg-emerald-600 hover:bg-emerald-500 rounded text-white transition-colors">
-          <Play :size="10" /> 应用
-        </button>
-        <button @click="store.setGeoEditorOpen(false)" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="关闭">
-          <X :size="12" />
-        </button>
+      <div class="flex items-center gap-0.5">
+        <template v-if="!editing">
+          <button @click="startEdit" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="编辑">
+            <Pencil :size="12" />
+          </button>
+          <button @click="syncEditorText" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="刷新">
+            <RotateCcw :size="12" />
+          </button>
+          <button @click="copyToClipboard" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="复制">
+            <Check v-if="copyFeedback" :size="12" class="text-emerald-400" />
+            <Copy v-else :size="12" />
+          </button>
+          <!-- 导入 -->
+          <input ref="fileInput" :key="fileInputKey" type="file" accept=".geojson,.json,.kml,.csv" @change="handleImport" class="hidden" />
+          <button @click="fileInput?.click()" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="导入文件（GeoJSON/KML/CSV，自动转为GeoJSON）">
+            <Upload :size="12" />
+          </button>
+          <!-- 导出 -->
+          <button @click="handleExport" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="导出 GeoJSON">
+            <Download :size="12" />
+          </button>
+        </template>
+        <template v-else>
+          <button @click="saveEdit" class="p-1 rounded hover:bg-gray-700 text-emerald-400 hover:text-emerald-300" title="保存">
+            <Save :size="12" />
+          </button>
+          <button @click="cancelEdit" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="取消">
+            <XCircle :size="12" />
+          </button>
+        </template>
       </div>
     </div>
 
     <!-- 树形视图 -->
-    <div v-if="viewMode === 'tree' && treeData" class="flex-1 overflow-auto p-2 text-xs font-mono leading-relaxed bg-gray-900">
-      <JsonTreeNode :node="treeData" :collapsed-paths="collapsedPaths" :depth="0" @toggle="toggleCollapse" />
+    <div v-if="!editing" class="flex-1 overflow-auto p-2 text-xs font-mono leading-relaxed bg-gray-900">
+      <div v-if="treeData">
+        <JsonTreeNode :node="treeData" :collapsed-paths="collapsedPaths" :depth="0" @toggle="toggleCollapse" />
+      </div>
+      <div v-else class="text-gray-500 text-center py-8">
+        暂无数据，点击导入文件（支持KML/CSV自动转GeoJSON）或绘制要素
+      </div>
     </div>
 
-    <!-- 文本视图 -->
-    <div v-else class="flex-1 overflow-hidden relative">
+    <!-- 文本编辑 -->
+    <div v-else class="flex-1 overflow-hidden flex flex-col">
       <textarea
-        v-model="editorText"
-        class="w-full h-full bg-gray-900 text-gray-200 text-xs font-mono p-3 resize-none focus:outline-none focus:ring-1 focus:ring-emerald-600/50 leading-relaxed"
+        v-model="editText"
+        class="flex-1 bg-gray-900 text-gray-200 text-xs font-mono p-3 resize-none focus:outline-none focus:ring-1 focus:ring-emerald-600/50 leading-relaxed"
         spellcheck="false"
-        placeholder="在此输入或粘贴 JSON..."
       ></textarea>
-      <div v-if="errorMsg" class="absolute bottom-0 left-0 right-0 bg-red-900/90 text-red-200 text-[10px] px-3 py-1.5 border-t border-red-700">
-        {{ errorMsg }}
+      <div v-if="editError" class="bg-red-900/90 text-red-200 text-[10px] px-3 py-1.5 border-t border-red-700">
+        {{ editError }}
       </div>
     </div>
   </div>

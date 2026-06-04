@@ -2,6 +2,10 @@
 import { ref, shallowRef, onMounted, onUnmounted, watch, computed, provide } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import 'leaflet.heat'
+import 'leaflet.markercluster'
+import 'leaflet.markercluster/dist/MarkerCluster.css'
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import { useAppStore, drawTempPoints, measureTempPoints, getAllDrawFeaturesGeoJson } from '../../stores/appStore'
 import type { DrawFeature } from '../../types'
 import { calcDistance, calcArea, calcBearing } from '../../utils/measurement'
@@ -11,7 +15,6 @@ import CoordTransform from '../tools/CoordTransform.vue'
 import SpatialAnalysis from '../tools/SpatialAnalysis.vue'
 import VisualizationPanel from '../tools/VisualizationPanel.vue'
 import BatchCoordTool from '../tools/BatchCoordTool.vue'
-import LayerManager from './LayerManager.vue'
 
 // 修复 Leaflet 默认 marker icon 404 问题
 delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -88,12 +91,43 @@ function applyGeoJsonToDrawFeatures(geojson: any) {
       }
     } else if (geometry.type === 'LineString') {
       const coordinates: [number, number][] = (geometry.coordinates as [number, number][]).map((c: [number, number]) => [c[1], c[0]] as [number, number])
+      const featProps = { ...properties, name: properties.name || `线 ${featureCounter}` }
       L.polyline(coordinates, { color: '#10b981', weight: 3 }).addTo(drawLayerGroup)
-      store.addDrawFeature({ id, type: 'polyline', coordinates, properties: { ...properties, name: properties.name || `线 ${featureCounter}` }, style: { color: '#10b981', weight: 3 } })
+        .on('click', (ev: L.LeafletEvent) => {
+          L.DomEvent.stopPropagation(ev)
+          store.setSelectedFeature({ id, type: 'polyline', coordinates, properties: featProps, style: { color: '#10b981', weight: 3 } })
+        })
+      store.addDrawFeature({ id, type: 'polyline', coordinates, properties: featProps, style: { color: '#10b981', weight: 3 } })
     } else if (geometry.type === 'Polygon') {
-      const coordinates: [number, number][] = (geometry.coordinates[0] as [number, number][]).map((c: [number, number]) => [c[1], c[0]] as [number, number])
-      L.polygon(coordinates, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
-      store.addDrawFeature({ id, type: 'polygon', coordinates, properties: { ...properties, name: properties.name || `多边形 ${featureCounter}` }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+      let coordinates: [number, number][] = (geometry.coordinates[0] as [number, number][]).map((c: [number, number]) => [c[1], c[0]] as [number, number])
+      // 去除 GeoJSON 闭合点（首尾重复），避免后续转换时重复闭合
+      if (coordinates.length >= 2) {
+        const first = coordinates[0], last = coordinates[coordinates.length - 1]
+        if (Math.abs(first[0] - last[0]) < 1e-10 && Math.abs(first[1] - last[1]) < 1e-10) {
+          coordinates = coordinates.slice(0, -1)
+        }
+      }
+      // 识别圆形（sub_type 为 circle 且有 radius 属性）
+      const isCircle = properties.sub_type === 'circle' && properties.radius
+      if (isCircle) {
+        const radius = typeof properties.radius === 'number' ? properties.radius : 1000
+        const center = coordinates[0]
+        const featProps = { ...properties, name: properties.name || `圆 ${featureCounter}`, radius }
+        L.circle(center, { radius, color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
+          .on('click', (ev: L.LeafletEvent) => {
+            L.DomEvent.stopPropagation(ev)
+            store.setSelectedFeature({ id, type: 'circle', coordinates: [center, center], properties: featProps, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+          })
+        store.addDrawFeature({ id, type: 'circle', coordinates: [center, center], properties: featProps, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+      } else {
+        const featProps = { ...properties, name: properties.name || `多边形 ${featureCounter}` }
+        L.polygon(coordinates, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
+          .on('click', (ev: L.LeafletEvent) => {
+            L.DomEvent.stopPropagation(ev)
+            store.setSelectedFeature({ id, type: 'polygon', coordinates, properties: featProps, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+          })
+        store.addDrawFeature({ id, type: 'polygon', coordinates, properties: featProps, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+      }
     }
   }
 }
@@ -138,6 +172,11 @@ function finishCurrent() {
 
 // 绘制提示信息
 const drawHint = ref('')
+
+// 文字标注输入
+const textInput = ref('')
+const textInputVisible = ref(false)
+const pendingTextLatlng = ref<[number, number] | null>(null)
 
 onMounted(() => {
   if (!mapEl.value) return
@@ -250,6 +289,10 @@ function finishDrawPolygon() {
   const points = [...drawTempPoints]
   const id = `draw-${++featureCounter}`
   L.polygon(points, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
+    .on('click', (ev: L.LeafletEvent) => {
+      L.DomEvent.stopPropagation(ev)
+      store.setSelectedFeature({ id, type: 'polygon', coordinates: points, properties: { name: `多边形 ${featureCounter}` }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+    })
   store.addDrawFeature({ id, type: 'polygon', coordinates: points, properties: { name: `多边形 ${featureCounter}` }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
   drawTempPoints.length = 0
   clearPreview()
@@ -265,6 +308,10 @@ function finishDrawPolyline() {
   const points = [...drawTempPoints]
   const id = `draw-${++featureCounter}`
   L.polyline(points, { color: '#10b981', weight: 3 }).addTo(drawLayerGroup)
+    .on('click', (ev: L.LeafletEvent) => {
+      L.DomEvent.stopPropagation(ev)
+      store.setSelectedFeature({ id, type: 'polyline', coordinates: points, properties: { name: `线 ${featureCounter}` }, style: { color: '#10b981', weight: 3 } })
+    })
   store.addDrawFeature({ id, type: 'polyline', coordinates: points, properties: { name: `线 ${featureCounter}` }, style: { color: '#10b981', weight: 3 } })
   drawTempPoints.length = 0
   clearPreview()
@@ -310,20 +357,23 @@ function finishMeasureDistance() {
   setTimeout(() => { drawHint.value = '' }, 3000)
 }
 
-// 延迟点击处理，用于区分单击和双击
-let clickTimer: ReturnType<typeof setTimeout> | null = null
-let pendingClickLatlng: [number, number] | null = null
-const CLICK_DELAY = 250 // ms
-
 function handleDblClick(_e: L.LeafletMouseEvent) {
-  // 取消待执行的单击
-  if (clickTimer) {
-    clearTimeout(clickTimer)
-    clickTimer = null
-    pendingClickLatlng = null
+  const mode = store.toolMode
+  const points = mode.startsWith('draw-') ? drawTempPoints : measureTempPoints
+
+  // 双击时移除末尾的重复点（双击产生的两次click坐标非常接近）
+  // 使用较大的阈值，因为双击时手指可能移动
+  while (points.length >= 2) {
+    const last = points[points.length - 1]
+    const prev = points[points.length - 2]
+    const dist = Math.sqrt(Math.pow(last[0] - prev[0], 2) + Math.pow(last[1] - prev[1], 2))
+    if (dist < 0.0005) { // 约50米阈值
+      points.pop()
+    } else {
+      break
+    }
   }
 
-  const mode = store.toolMode
   // 双击完成绘制/测量
   if (mode === 'measure-area' && measureTempPoints.length >= 3) finishMeasureArea()
   else if (mode === 'draw-polygon' && drawTempPoints.length >= 3) finishDrawPolygon()
@@ -337,18 +387,10 @@ function handleMapClick(e: L.LeafletMouseEvent) {
 
   const latlng: [number, number] = [e.latlng.lat, e.latlng.lng]
 
-  // 需要双击完成的模式：延迟添加点，避免双击时多添加点
+  // 需要双击完成的模式：立即添加点以提供视觉反馈
   const dblClickModes = ['draw-polyline', 'draw-polygon', 'measure-distance', 'measure-area']
   if (dblClickModes.includes(mode)) {
-    if (clickTimer) clearTimeout(clickTimer)
-    pendingClickLatlng = latlng
-    clickTimer = setTimeout(() => {
-      clickTimer = null
-      if (pendingClickLatlng) {
-        addPointToMode(mode, pendingClickLatlng)
-        pendingClickLatlng = null
-      }
-    }, CLICK_DELAY)
+    addPointToMode(mode, latlng)
     return
   }
 
@@ -442,15 +484,9 @@ function processClick(mode: string, latlng: [number, number]) {
 
   // ---- 文字标注 ----
   if (mode === 'draw-text') {
-    const text = prompt('请输入标注文字：')
-    if (!text) return
-    const id = `draw-${++featureCounter}`
-    const marker = L.marker(latlng).addTo(drawLayerGroup)
-    marker.bindTooltip(text, { permanent: true, direction: 'top', offset: [0, -20] }).openTooltip()
-    store.addDrawFeature({
-      id, type: 'text', coordinates: latlng,
-      properties: { text, name: text }, style: {},
-    })
+    pendingTextLatlng.value = latlng
+    textInput.value = ''
+    textInputVisible.value = true
     return
   }
 
@@ -460,11 +496,20 @@ function processClick(mode: string, latlng: [number, number]) {
   if (mode === 'draw-rectangle') {
     drawTempPoints.push(latlng)
     if (drawTempPoints.length >= 2) {
-      const points = [...drawTempPoints]
       const id = `draw-${++featureCounter}`
-      const bounds = L.latLngBounds(points[0], points[1])
+      const bounds = L.latLngBounds(drawTempPoints[0], drawTempPoints[1])
+      // 展开为4个角点，确保 GeoJSON Polygon 坐标有效
+      const sw = bounds.getSouthWest()
+      const ne = bounds.getNorthEast()
+      const nw = bounds.getNorthWest()
+      const se = bounds.getSouthEast()
+      const corners: [number, number][] = [[nw.lat, nw.lng], [ne.lat, ne.lng], [se.lat, se.lng], [sw.lat, sw.lng]]
       L.rectangle(bounds, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
-      store.addDrawFeature({ id, type: 'rectangle', coordinates: points, properties: { name: `矩形 ${featureCounter}` }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+        .on('click', (ev: L.LeafletEvent) => {
+          L.DomEvent.stopPropagation(ev)
+          store.setSelectedFeature({ id, type: 'rectangle', coordinates: corners, properties: { name: `矩形 ${featureCounter}` }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+        })
+      store.addDrawFeature({ id, type: 'rectangle', coordinates: corners, properties: { name: `矩形 ${featureCounter}` }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
       drawTempPoints.length = 0
       clearPreview()
       drawHint.value = '矩形已绘制'
@@ -485,6 +530,10 @@ function processClick(mode: string, latlng: [number, number]) {
       const edge = L.latLng(points[1])
       const radius = center.distanceTo(edge)
       L.circle(points[0], { radius, color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
+        .on('click', (ev: L.LeafletEvent) => {
+          L.DomEvent.stopPropagation(ev)
+          store.setSelectedFeature({ id, type: 'circle', coordinates: points, properties: { name: `圆 ${featureCounter}`, radius }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+        })
       store.addDrawFeature({ id, type: 'circle', coordinates: points, properties: { name: `圆 ${featureCounter}`, radius }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
       drawTempPoints.length = 0
       clearPreview()
@@ -527,6 +576,29 @@ function processClick(mode: string, latlng: [number, number]) {
     }
     return
   }
+}
+
+// 确认文字标注输入
+function confirmTextInput() {
+  if (!textInput.value.trim() || !pendingTextLatlng.value) {
+    textInputVisible.value = false
+    return
+  }
+  const text = textInput.value.trim()
+  const latlng = pendingTextLatlng.value
+  const id = `draw-${++featureCounter}`
+  const marker = L.marker(latlng).addTo(drawLayerGroup)
+  marker.bindTooltip(text, { permanent: true, direction: 'top', offset: [0, -20] }).openTooltip()
+  marker.on('click', (ev: L.LeafletEvent) => {
+    L.DomEvent.stopPropagation(ev)
+    store.setSelectedFeature({ id, type: 'text', coordinates: latlng, properties: { text, name: text }, style: {} })
+  })
+  store.addDrawFeature({
+    id, type: 'text', coordinates: latlng,
+    properties: { text, name: text }, style: {},
+  })
+  textInputVisible.value = false
+  pendingTextLatlng.value = null
 }
 
 // 鼠标移动实时预览
@@ -587,7 +659,6 @@ watch(() => store.toolMode, (newMode, oldMode) => {
     drawTempPoints.length = 0
     measureTempPoints.length = 0
     clearPreview()
-    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; pendingClickLatlng = null }
   }
   if (newMode.startsWith('measure')) {
     store.clearMeasureResults()
@@ -618,7 +689,8 @@ watch(() => [...store.layers], (newLayers) => {
   if (!geoLayerGroup) return
   geoLayerGroup.clearLayers()
   newLayers.forEach((layer) => {
-    if (layer.visible && layer.type === 'geojson') {
+    if (!layer.visible) return
+    if (layer.type === 'geojson') {
       L.geoJSON(layer.data, {
         style: () => ({
           color: layer.style?.color || '#10b981',
@@ -631,6 +703,54 @@ watch(() => [...store.layers], (newLayers) => {
           return L.marker(latlng)
         },
       }).addTo(geoLayerGroup)
+    } else if (layer.type === 'heatmap') {
+      // 从 GeoJSON 数据中提取点坐标用于热力图
+      const points: [number, number, number][] = []
+      const data = layer.data as any
+      if (data.type === 'FeatureCollection') {
+        data.features.forEach((f: any) => {
+          if (f.geometry?.type === 'Point') {
+            points.push([f.geometry.coordinates[1], f.geometry.coordinates[0], 1.0])
+          } else if (f.geometry?.type === 'Polygon' || f.geometry?.type === 'LineString') {
+            f.geometry.coordinates[0]?.forEach((c: number[]) => {
+              points.push([c[1], c[0], 0.5])
+            })
+          }
+        })
+      } else if (data.type === 'Feature') {
+        if (data.geometry?.type === 'Point') {
+          points.push([data.geometry.coordinates[1], data.geometry.coordinates[0], 1.0])
+        }
+      }
+      if (points.length > 0) {
+        const radius = layer.style?.radius ?? 25
+        ;(L as any).heatLayer(points, { radius, blur: 15, maxZoom: 17, gradient: { 0.4: '#00f', 0.6: '#0f0', 0.8: '#ff0', 1.0: '#f00' } }).addTo(geoLayerGroup)
+      }
+    } else if (layer.type === 'cluster') {
+      // 从 GeoJSON 数据中提取点用于聚合显示
+      const clusterGroup = (L as any).markerClusterGroup({
+        maxClusterRadius: 50,
+        spiderfyOnMaxZoom: true,
+        showCoverageOnHover: false,
+        iconCreateFunction: (cluster: any) => {
+          const count = cluster.getChildCount()
+          let cls = 'cluster-small'
+          if (count > 100) cls = 'cluster-large'
+          else if (count > 10) cls = 'cluster-medium'
+          return L.divIcon({ html: `<div class="${cls}"><span>${count}</span></div>`, className: 'custom-cluster-icon', iconSize: L.point(40, 40) })
+        }
+      })
+      const data = layer.data as any
+      if (data.type === 'FeatureCollection') {
+        data.features.forEach((f: any) => {
+          if (f.geometry?.type === 'Point') {
+            clusterGroup.addLayer(L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]]))
+          }
+        })
+      }
+      if (clusterGroup.getLayers().length > 0) {
+        geoLayerGroup.addLayer(clusterGroup)
+      }
     }
   })
 }, { deep: true })
@@ -716,6 +836,15 @@ const showBasemapSwitcher = ref(false)
       </div>
     </div>
 
+    <!-- 文字标注输入 -->
+    <div v-if="textInputVisible" class="absolute top-3 left-1/2 -translate-x-1/2 z-[1001]">
+      <div class="bg-gray-800/95 backdrop-blur border border-emerald-600/50 rounded-lg px-4 py-2 shadow-lg flex items-center gap-2">
+        <input v-model="textInput" @keydown.enter="confirmTextInput" @keydown.escape="textInputVisible = false" type="text" placeholder="输入标注文字" class="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-sm text-white outline-none focus:border-emerald-500 w-48" autofocus />
+        <button @click="confirmTextInput" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 rounded text-xs text-white">确定</button>
+        <button @click="textInputVisible = false" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-300">取消</button>
+      </div>
+    </div>
+
     <!-- 右键菜单 -->
     <div
       v-if="contextMenu.visible"
@@ -763,6 +892,18 @@ const showBasemapSwitcher = ref(false)
       <button @click="fitWorld" class="w-9 h-9 bg-gray-800/90 backdrop-blur border border-gray-600 rounded flex items-center justify-center hover:bg-gray-700 transition-colors text-white" title="全局视图">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
       </button>
+      <!-- 分隔线 -->
+      <div class="w-7 mx-auto border-t border-gray-600 my-0.5"></div>
+      <!-- 测量工具 -->
+      <button @click="store.setToolMode(store.toolMode === 'measure-distance' ? 'pan' : 'measure-distance')" class="w-9 h-9 rounded flex items-center justify-center transition-colors text-white" :class="store.toolMode === 'measure-distance' ? 'bg-emerald-600 border border-emerald-500' : 'bg-gray-800/90 backdrop-blur border border-gray-600 hover:bg-gray-700'" title="测距">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h5"/><path d="M17 12h5"/><path d="M7 12a5 5 0 0 1 10 0"/><path d="M2 12v3"/><path d="M22 12v3"/></svg>
+      </button>
+      <button @click="store.setToolMode(store.toolMode === 'measure-area' ? 'pan' : 'measure-area')" class="w-9 h-9 rounded flex items-center justify-center transition-colors text-white" :class="store.toolMode === 'measure-area' ? 'bg-emerald-600 border border-emerald-500' : 'bg-gray-800/90 backdrop-blur border border-gray-600 hover:bg-gray-700'" title="测面">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7 7"/><path d="M3 3v6"/><path d="M3 3h6"/><path d="M21 21l-7-7"/><path d="M21 21v-6"/><path d="M21 21h-6"/><rect x="7" y="7" width="10" height="10" rx="1" opacity="0.3"/></svg>
+      </button>
+      <button @click="store.setToolMode(store.toolMode === 'measure-angle' ? 'pan' : 'measure-angle')" class="w-9 h-9 rounded flex items-center justify-center transition-colors text-white" :class="store.toolMode === 'measure-angle' ? 'bg-emerald-600 border border-emerald-500' : 'bg-gray-800/90 backdrop-blur border border-gray-600 hover:bg-gray-700'" title="测方位角">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2v4"/><path d="M12 8v4"/><path d="M12 12l4 4"/></svg>
+      </button>
     </div>
 
     <!-- 底图切换 -->
@@ -782,9 +923,6 @@ const showBasemapSwitcher = ref(false)
         </div>
       </div>
     </div>
-
-    <!-- 图层管理 -->
-    <LayerManager />
 
     <!-- 工具面板 -->
     <div class="absolute inset-0 pointer-events-none z-[1000]">

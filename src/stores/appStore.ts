@@ -15,11 +15,26 @@ export function drawFeatureToGeoJson(feature: DrawFeature): any {
   }
   if (type === 'polygon' || type === 'rectangle') {
     const coords = coordinates as [number, number][]
-    return { type: 'Feature', properties, geometry: { type: 'Polygon', coordinates: [coords.map(([lat, lng]) => [lng, lat])] } }
+    const ring = coords.map(([lat, lng]) => [lng, lat])
+    ring.push(ring[0]) // 闭合 LinearRing
+    return { type: 'Feature', properties, geometry: { type: 'Polygon', coordinates: [ring] } }
   }
   if (type === 'circle') {
     const coords = coordinates as [number, number][]
-    return { type: 'Feature', properties: { ...properties, sub_type: 'circle' }, geometry: { type: 'Point', coordinates: [coords[0][1], coords[0][0]] } }
+    const center = coords[0] // [lat, lng]
+    const radius = Number(properties?.radius ?? 1000)
+    // 将圆近似为64边多边形（GeoJSON标准Polygon）
+    const segments = 64
+    const ring: [number, number][] = []
+    for (let i = 0; i < segments; i++) {
+      const angle = (2 * Math.PI * i) / segments
+      // 使用 Haversine 近似计算圆周上的点
+      const dLat = (radius * Math.cos(angle)) / 111320
+      const dLng = (radius * Math.sin(angle)) / (111320 * Math.cos(center[0] * Math.PI / 180))
+      ring.push([center[1] + dLng, center[0] + dLat]) // [lng, lat]
+    }
+    ring.push(ring[0]) // 闭合 LinearRing
+    return { type: 'Feature', properties: { ...properties, sub_type: 'circle' }, geometry: { type: 'Polygon', coordinates: [ring] } }
   }
   return null
 }

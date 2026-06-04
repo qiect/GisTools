@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useAppStore, getAllDrawFeaturesGeoJson } from '../../stores/appStore'
+import type { FeatureCollection } from 'geojson'
 import {
   bufferAnalysis, convexHullAnalysis, centerOfMass, centroidCalc,
   tinAnalysis, simplify, pointDistance, area, bearingCalc,
@@ -59,42 +60,113 @@ function runAnalysis() {
   const drawFc = store.drawFeatures.length > 0 ? getAllDrawFeaturesGeoJson(store.drawFeatures) : null
   const hasDrawFeatures = drawFc && drawFc.features && drawFc.features.length > 0
 
+  // 构建完整的 FeatureCollection（安全处理各种数据格式）
+  function buildFC(): FeatureCollection {
+    const features: any[] = []
+    for (const l of geoLayers) {
+      const data = l.data as any
+      if (data?.type === 'FeatureCollection' && Array.isArray(data.features)) {
+        features.push(...data.features.filter((f: any) => f?.geometry))
+      } else if (data?.type === 'Feature' && data.geometry) {
+        features.push(data)
+      }
+    }
+    if (hasDrawFeatures) features.push(...drawFc.features.filter((f: any) => f?.geometry))
+    return { type: 'FeatureCollection' as const, features }
+  }
+
+  // 按几何类型过滤要素并构建 FeatureCollection
+  function filterFC(features: any[], types: string[]): FeatureCollection {
+    return { type: 'FeatureCollection' as const, features: features.filter((f: any) => types.includes(f.geometry?.type)) }
+  }
+
+  // 从面/线要素中提取顶点为 Point Feature
+  function extractPointsFC(features: any[]): FeatureCollection {
+    const points: any[] = []
+    for (const f of features) {
+      const gtype = f.geometry?.type
+      if (gtype === 'Point') {
+        points.push(f)
+      } else if (gtype === 'LineString') {
+        f.geometry.coordinates.forEach((c: number[]) => points.push({ type: 'Feature', properties: f.properties || {}, geometry: { type: 'Point', coordinates: c } }))
+      } else if (gtype === 'Polygon') {
+        f.geometry.coordinates[0]?.forEach((c: number[]) => points.push({ type: 'Feature', properties: f.properties || {}, geometry: { type: 'Point', coordinates: c } }))
+      } else if (gtype === 'MultiPoint') {
+        f.geometry.coordinates.forEach((c: number[]) => points.push({ type: 'Feature', properties: f.properties || {}, geometry: { type: 'Point', coordinates: c } }))
+      }
+    }
+    return { type: 'FeatureCollection' as const, features: points }
+  }
+
   try {
     let result: any
+    const allFC = buildFC()
+    const hasData = allFC.features.length > 0
 
-    // 需要图层的分析
-    if (['buffer', 'convex', 'center', 'centroid', 'tin', 'simplify', 'bbox'].includes(analysisType.value)) {
-      if (geoLayers.length === 0 && !hasDrawFeatures) { status.value = '没有可分析的数据，请先导入或绘制要素'; return }
-      const fc = {
-        type: 'FeatureCollection' as const,
-        features: [
-          ...geoLayers.flatMap((l) => (l.data as any).features || [l.data]),
-          ...(hasDrawFeatures ? drawFc.features : []),
-        ],
-      }
+    // ---- 几何分析 ----
+    if (analysisType.value === 'buffer') {
+      if (!hasData) { status.value = '没有可分析的数据，请先导入或绘制要素'; return }
+      result = bufferAnalysis(allFC, parseFloat(bufferRadius.value), bufferUnit.value)
+    }
 
-      if (analysisType.value === 'buffer') result = bufferAnalysis(fc, parseFloat(bufferRadius.value), bufferUnit.value)
-      else if (analysisType.value === 'convex') result = convexHullAnalysis(fc)
-      else if (analysisType.value === 'center') result = centerOfMass(fc)
-      else if (analysisType.value === 'centroid') result = centroidCalc(fc)
-      else if (analysisType.value === 'tin') result = tinAnalysis(fc as any)
-      else if (analysisType.value === 'simplify') result = simplify(fc as any, parseFloat(simplifyTolerance.value))
-      else if (analysisType.value === 'bbox') {
-        const bbox = bboxCalc(fc)
-        const [west, south, east, north] = bbox
-        result = {
-          type: 'Feature',
-          properties: { bbox: bbox.join(', ') },
-          geometry: {
-            type: 'Polygon',
-            coordinates: [[[west, south], [east, south], [east, north], [west, north], [west, south]]]
-          }
+    else if (analysisType.value === 'convex') {
+      if (!hasData) { status.value = '没有可分析的数据，请先导入或绘制要素'; return }
+      const pointFC = extractPointsFC(allFC.features)
+      if (pointFC.features.length < 3) { status.value = '凸包分析需要至少3个点，当前点数不足'; return }
+      result = convexHullAnalysis(pointFC)
+      if (!result) { status.value = '无法生成凸包，点可能共线'; return }
+    }
+
+    else if (analysisType.value === 'simplify') {
+      if (!hasData) { status.value = '没有可分析的数据，请先导入或绘制要素'; return }
+      const linePolyFC = filterFC(allFC.features, ['LineString', 'Polygon', 'MultiLineString', 'MultiPolygon'])
+      if (linePolyFC.features.length === 0) { status.value = '简化几何需要线或面要素，当前没有可简化的数据'; return }
+      result = simplify(linePolyFC, parseFloat(simplifyTolerance.value))
+    }
+
+    else if (analysisType.value === 'bbox') {
+      if (!hasData) { status.value = '没有可分析的数据，请先导入或绘制要素'; return }
+      const bbox = bboxCalc(allFC)
+      const [west, south, east, north] = bbox
+      result = {
+        type: 'Feature',
+        properties: { bbox: bbox.join(', ') },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[west, south], [east, south], [east, north], [west, north], [west, south]]]
         }
       }
     }
 
-    // 不需要图层的计算
-    if (analysisType.value === 'distance') {
+    // ---- 位置计算 ----
+    else if (analysisType.value === 'center') {
+      if (!hasData) { status.value = '没有可分析的数据，请先导入或绘制要素'; return }
+      result = centerOfMass(allFC)
+    }
+
+    else if (analysisType.value === 'centroid') {
+      if (!hasData) { status.value = '没有可分析的数据，请先导入或绘制要素'; return }
+      result = centroidCalc(allFC)
+    }
+
+    else if (analysisType.value === 'midpoint') {
+      result = midpointCalc(
+        [parseFloat(point1Lng.value), parseFloat(point1Lat.value)],
+        [parseFloat(point2Lng.value), parseFloat(point2Lat.value)]
+      )
+    }
+
+    else if (analysisType.value === 'destination') {
+      result = destinationCalc(
+        [parseFloat(point1Lng.value), parseFloat(point1Lat.value)],
+        parseFloat(destDistance.value),
+        parseFloat(destBearing.value),
+        destUnit.value
+      )
+    }
+
+    // ---- 测量计算 ----
+    else if (analysisType.value === 'distance') {
       const dist = pointDistance(
         [parseFloat(point1Lng.value), parseFloat(point1Lat.value)],
         [parseFloat(point2Lng.value), parseFloat(point2Lat.value)],
@@ -104,22 +176,17 @@ function runAnalysis() {
       return
     }
 
-    if (analysisType.value === 'area') {
-      if (geoLayers.length === 0 && !hasDrawFeatures) { status.value = '没有可计算的数据，请先导入或绘制多边形要素'; return }
-      const fc = {
-        type: 'FeatureCollection' as const,
-        features: [
-          ...geoLayers.flatMap((l) => (l.data as any).features || [l.data]),
-          ...(hasDrawFeatures ? drawFc.features : []),
-        ],
-      }
-      const a = area(fc as any)
+    else if (analysisType.value === 'area') {
+      if (!hasData) { status.value = '没有可计算的数据，请先导入或绘制多边形要素'; return }
+      const polyFC = filterFC(allFC.features, ['Polygon', 'MultiPolygon'])
+      if (polyFC.features.length === 0) { status.value = '没有多边形要素，无法计算面积'; return }
+      const a = area(polyFC)
       const sqKm = a / 1e6
       status.value = `面积: ${sqKm < 0.01 ? (a).toFixed(2) + ' m²' : sqKm.toFixed(4) + ' km²'}`
       return
     }
 
-    if (analysisType.value === 'bearing') {
+    else if (analysisType.value === 'bearing') {
       const b = bearingCalc(
         [parseFloat(point1Lng.value), parseFloat(point1Lat.value)],
         [parseFloat(point2Lng.value), parseFloat(point2Lat.value)]
@@ -129,46 +196,24 @@ function runAnalysis() {
       return
     }
 
-    if (analysisType.value === 'destination') {
-      result = destinationCalc(
-        [parseFloat(point1Lng.value), parseFloat(point1Lat.value)],
-        parseFloat(destDistance.value),
-        parseFloat(destBearing.value),
-        destUnit.value
-      )
+    // ---- 网格与采样 ----
+    else if (analysisType.value === 'tin') {
+      if (!hasData) { status.value = '没有可分析的数据，请先导入或绘制要素'; return }
+      const pointFC = extractPointsFC(allFC.features)
+      if (pointFC.features.length < 3) { status.value = 'TIN 三角网需要至少3个点，当前点数不足'; return }
+      result = tinAnalysis(pointFC as any)
     }
 
-    if (analysisType.value === 'midpoint') {
-      result = midpointCalc(
-        [parseFloat(point1Lng.value), parseFloat(point1Lat.value)],
-        [parseFloat(point2Lng.value), parseFloat(point2Lat.value)]
-      )
-    }
-
-    if (analysisType.value === 'grid') {
-      if (geoLayers.length === 0 && !hasDrawFeatures) { status.value = '请先导入或绘制数据以确定范围'; return }
-      const fc = {
-        type: 'FeatureCollection' as const,
-        features: [
-          ...geoLayers.flatMap((l) => (l.data as any).features || [l.data]),
-          ...(hasDrawFeatures ? drawFc.features : []),
-        ],
-      }
-      const bbox = bboxCalc(fc)
+    else if (analysisType.value === 'grid') {
+      if (!hasData) { status.value = '请先导入或绘制数据以确定范围'; return }
+      const bbox = bboxCalc(allFC)
       result = squareGrid(bbox as [number, number, number, number], parseFloat(gridCellSize.value), gridUnit.value)
     }
 
-    if (analysisType.value === 'random') {
+    else if (analysisType.value === 'random') {
       let bbox: [number, number, number, number] | undefined
-      if (geoLayers.length > 0 || hasDrawFeatures) {
-        const fc = {
-          type: 'FeatureCollection' as const,
-          features: [
-            ...geoLayers.flatMap((l) => (l.data as any).features || [l.data]),
-            ...(hasDrawFeatures ? drawFc.features : []),
-          ],
-        }
-        bbox = bboxCalc(fc) as [number, number, number, number]
+      if (hasData) {
+        bbox = bboxCalc(allFC) as [number, number, number, number]
       }
       result = randomPoints(parseInt(randomCount.value), bbox)
     }

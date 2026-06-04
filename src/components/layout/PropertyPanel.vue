@@ -26,7 +26,7 @@ function selectFeature(feature: any) {
 </script>
 
 <template>
-  <div class="absolute top-3 right-3 z-[1001] w-56 max-h-[50vh] bg-gray-800/95 backdrop-blur border border-gray-600 rounded-lg shadow-xl flex flex-col overflow-hidden">
+  <div class="absolute bottom-3 right-3 z-[1001] w-56 max-h-[50vh] bg-gray-800/95 backdrop-blur border border-gray-600 rounded-lg shadow-xl flex flex-col overflow-hidden">
     <div class="flex items-center justify-between px-3 py-1.5 border-b border-gray-700 shrink-0">
       <h2 class="text-[11px] font-semibold">属性</h2>
       <button @click="store.setPropertyPanelOpen(false)" class="p-0.5 rounded hover:bg-gray-700 text-gray-400">
