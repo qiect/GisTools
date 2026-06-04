@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { ref, inject } from 'vue'
-import { useAppStore } from '../../stores/appStore'
+import { ref } from 'vue'
+import { useAppStore, getAllDrawFeaturesGeoJson } from '../../stores/appStore'
 import { parseGeoJSON, parseKML, parseCSV, exportGeoJSON, downloadFile } from '../../utils/dataIO'
 import type { GeoLayer } from '../../types'
 import { Upload, FileJson, X } from 'lucide-vue-next'
 
 const store = useAppStore()
-const getAllDrawFeaturesGeoJson = inject<() => any>('getAllDrawFeaturesGeoJson')
 const status = ref('')
 const fileInputKey = ref(0) // 用于重置 input
 const fileInput = ref<HTMLInputElement>()
@@ -41,7 +40,7 @@ async function handleImport(e: Event) {
 
 function handleExport() {
   const geoLayers = store.layers.filter((l) => l.type === 'geojson')
-  const drawFc = getAllDrawFeaturesGeoJson ? getAllDrawFeaturesGeoJson() : null
+  const drawFc = store.drawFeatures.length > 0 ? getAllDrawFeaturesGeoJson(store.drawFeatures) : null
   const hasDrawFeatures = drawFc && drawFc.features && drawFc.features.length > 0
   if (geoLayers.length === 0 && !hasDrawFeatures) { status.value = '没有可导出的数据，请先导入或绘制要素'; return }
   const fc = {

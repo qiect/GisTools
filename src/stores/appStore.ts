@@ -1,6 +1,36 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import type { ToolMode, GeoLayer, DrawFeature, MeasureResult } from '../types'
+
+// 将绘制要素转为 GeoJSON Feature
+export function drawFeatureToGeoJson(feature: DrawFeature): any {
+  const { type, coordinates, properties } = feature
+  if (type === 'marker' || type === 'text') {
+    const coords = coordinates as [number, number]
+    return { type: 'Feature', properties, geometry: { type: 'Point', coordinates: [coords[1], coords[0]] } }
+  }
+  if (type === 'polyline') {
+    const coords = coordinates as [number, number][]
+    return { type: 'Feature', properties, geometry: { type: 'LineString', coordinates: coords.map(([lat, lng]) => [lng, lat]) } }
+  }
+  if (type === 'polygon' || type === 'rectangle') {
+    const coords = coordinates as [number, number][]
+    return { type: 'Feature', properties, geometry: { type: 'Polygon', coordinates: [coords.map(([lat, lng]) => [lng, lat])] } }
+  }
+  if (type === 'circle') {
+    const coords = coordinates as [number, number][]
+    return { type: 'Feature', properties: { ...properties, sub_type: 'circle' }, geometry: { type: 'Point', coordinates: [coords[0][1], coords[0][0]] } }
+  }
+  return null
+}
+
+// 获取所有绘制要素的 GeoJSON FeatureCollection
+export function getAllDrawFeaturesGeoJson(features: DrawFeature[]): any {
+  return {
+    type: 'FeatureCollection',
+    features: features.map(drawFeatureToGeoJson).filter(Boolean),
+  }
+}
 
 export const useAppStore = defineStore('app', () => {
   const toolMode = ref<ToolMode>('pan')
@@ -12,6 +42,9 @@ export const useAppStore = defineStore('app', () => {
   const propertyPanelOpen = ref(false)
   const geoEditorOpen = ref(false)
   const selectedFeature = ref<DrawFeature | null>(null)
+
+  // GeoJSON 编辑器写入待应用的 GeoJSON，MapContainer 监听并执行
+  const pendingGeoJsonToApply = ref<any>(null)
 
   function setToolMode(mode: ToolMode) {
     toolMode.value = mode
@@ -57,14 +90,20 @@ export const useAppStore = defineStore('app', () => {
   }
   function setSelectedFeature(feature: DrawFeature | null) {
     selectedFeature.value = feature
+    if (feature) propertyPanelOpen.value = true
+  }
+  function requestApplyGeoJson(geojson: any) {
+    pendingGeoJsonToApply.value = geojson
   }
 
   return {
     toolMode, layers, activeLayerId, drawFeatures, measureResults,
     sidebarOpen, propertyPanelOpen, geoEditorOpen, selectedFeature,
+    pendingGeoJsonToApply,
     setToolMode, addLayer, removeLayer, toggleLayerVisibility, updateLayerOpacity,
     setActiveLayerId, addDrawFeature, removeDrawFeature, addMeasureResult,
-    clearMeasureResults, setSidebarOpen, setPropertyPanelOpen, setGeoEditorOpen, setSelectedFeature,
+    clearMeasureResults, setSidebarOpen, setPropertyPanelOpen, setGeoEditorOpen,
+    setSelectedFeature, requestApplyGeoJson,
   }
 })
 

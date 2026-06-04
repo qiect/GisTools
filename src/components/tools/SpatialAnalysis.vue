@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, inject } from 'vue'
-import { useAppStore } from '../../stores/appStore'
+import { ref, computed } from 'vue'
+import { useAppStore, getAllDrawFeaturesGeoJson } from '../../stores/appStore'
 import {
   bufferAnalysis, convexHullAnalysis, centerOfMass, centroidCalc,
   tinAnalysis, simplify, pointDistance, area, bearingCalc,
@@ -36,7 +36,6 @@ const analysisOptions: { value: AnalysisType; label: string; desc: string; group
 const groups = ['几何分析', '位置计算', '测量计算', '网格与采样']
 
 const store = useAppStore()
-const getAllDrawFeaturesGeoJson = inject<() => any>('getAllDrawFeaturesGeoJson')
 const analysisType = ref<AnalysisType>('buffer')
 const bufferRadius = ref('5')
 const bufferUnit = ref<'kilometers' | 'miles' | 'meters'>('kilometers')
@@ -57,7 +56,7 @@ const point2Lat = ref('31.2304')
 
 function runAnalysis() {
   const geoLayers = store.layers.filter((l) => l.type === 'geojson')
-  const drawFc = getAllDrawFeaturesGeoJson ? getAllDrawFeaturesGeoJson() : null
+  const drawFc = store.drawFeatures.length > 0 ? getAllDrawFeaturesGeoJson(store.drawFeatures) : null
   const hasDrawFeatures = drawFc && drawFc.features && drawFc.features.length > 0
 
   try {

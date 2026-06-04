@@ -1,40 +1,34 @@
 <script setup lang="ts">
-import { ref, watch, inject } from 'vue'
-import { useAppStore } from '../../stores/appStore'
+import { ref, watch, computed } from 'vue'
+import { useAppStore, getAllDrawFeaturesGeoJson } from '../../stores/appStore'
 import { FileJson, Play, RotateCcw, Copy, Check, X } from 'lucide-vue-next'
 
 const store = useAppStore()
-const getAllDrawFeaturesGeoJson = inject<() => any>('getAllDrawFeaturesGeoJson')
-const applyGeoJsonToDrawFeatures = inject<(geojson: any) => void>('applyGeoJsonToDrawFeatures')
 
 const editorText = ref('')
 const errorMsg = ref('')
 const copyFeedback = ref(false)
 
-// 获取当前可编辑的 GeoJSON
-function getCurrentGeoJson(): string {
-  // 所有绘制要素
-  if (store.drawFeatures.length > 0 && getAllDrawFeaturesGeoJson) {
-    const fc = getAllDrawFeaturesGeoJson()
-    if (fc.features.length > 0) return JSON.stringify(fc, null, 2)
+// 计算当前 GeoJSON
+const currentGeoJson = computed(() => {
+  // 绘制要素
+  if (store.drawFeatures.length > 0) {
+    return getAllDrawFeaturesGeoJson(store.drawFeatures)
   }
-
   // 导入的图层
   const geoLayers = store.layers.filter((l) => l.type === 'geojson')
   if (geoLayers.length > 0) {
-    const fc = {
+    return {
       type: 'FeatureCollection' as const,
       features: geoLayers.flatMap((l: any) => (l.data as any).features || [l.data]),
     }
-    return JSON.stringify(fc, null, 2)
   }
-
-  return '{\n  "type": "FeatureCollection",\n  "features": []\n}'
-}
+  return { type: 'FeatureCollection', features: [] }
+})
 
 // 初始化编辑器内容
 function resetEditor() {
-  editorText.value = getCurrentGeoJson()
+  editorText.value = JSON.stringify(currentGeoJson.value, null, 2)
   errorMsg.value = ''
 }
 
@@ -46,13 +40,8 @@ function applyGeoJson() {
       errorMsg.value = '无效的 GeoJSON：缺少 type 字段'
       return
     }
-
-    if (applyGeoJsonToDrawFeatures) {
-      applyGeoJsonToDrawFeatures(parsed)
-      errorMsg.value = ''
-    } else {
-      errorMsg.value = '地图组件未就绪'
-    }
+    store.requestApplyGeoJson(parsed)
+    errorMsg.value = ''
   } catch (e: any) {
     errorMsg.value = `JSON 解析错误: ${e.message}`
   }
@@ -79,11 +68,9 @@ function copyToClipboard() {
 
 // 监听绘制要素变化，自动更新编辑器
 watch(() => [...store.drawFeatures], () => {
-  if (getAllDrawFeaturesGeoJson) {
-    const fc = getAllDrawFeaturesGeoJson()
-    if (fc.features.length > 0) {
-      editorText.value = JSON.stringify(fc, null, 2)
-    }
+  const geojson = getAllDrawFeaturesGeoJson(store.drawFeatures)
+  if (geojson.features.length > 0) {
+    editorText.value = JSON.stringify(geojson, null, 2)
   }
 })
 

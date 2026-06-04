@@ -2,7 +2,7 @@
 import { ref, shallowRef, onMounted, onUnmounted, watch, computed, provide } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { useAppStore, drawTempPoints, measureTempPoints } from '../../stores/appStore'
+import { useAppStore, drawTempPoints, measureTempPoints, getAllDrawFeaturesGeoJson } from '../../stores/appStore'
 import type { DrawFeature } from '../../types'
 import { calcDistance, calcArea, calcBearing } from '../../utils/measurement'
 import SearchTool from '../tools/SearchTool.vue'
@@ -56,36 +56,6 @@ function showToast(msg: string, duration = 2000) {
   toastTimer = setTimeout(() => { toastMsg.value = '' }, duration)
 }
 
-// 将绘制要素转为 GeoJSON
-function drawFeatureToGeoJson(feature: DrawFeature): any {
-  const { type, coordinates, properties } = feature
-  if (type === 'marker' || type === 'text') {
-    const coords = coordinates as [number, number]
-    return { type: 'Feature', properties, geometry: { type: 'Point', coordinates: [coords[1], coords[0]] } }
-  }
-  if (type === 'polyline') {
-    const coords = coordinates as [number, number][]
-    return { type: 'Feature', properties, geometry: { type: 'LineString', coordinates: coords.map(([lat, lng]) => [lng, lat]) } }
-  }
-  if (type === 'polygon' || type === 'rectangle') {
-    const coords = coordinates as [number, number][]
-    return { type: 'Feature', properties, geometry: { type: 'Polygon', coordinates: [coords.map(([lat, lng]) => [lng, lat])] } }
-  }
-  if (type === 'circle') {
-    const coords = coordinates as [number, number][]
-    return { type: 'Feature', properties: { ...properties, sub_type: 'circle' }, geometry: { type: 'Point', coordinates: [coords[0][1], coords[0][0]] } }
-  }
-  return null
-}
-
-// 获取所有绘制要素的 GeoJSON FeatureCollection
-function getAllDrawFeaturesGeoJson(): any {
-  return {
-    type: 'FeatureCollection',
-    features: store.drawFeatures.map(drawFeatureToGeoJson).filter(Boolean),
-  }
-}
-
 // 从 GeoJSON 更新绘制要素
 function applyGeoJsonToDrawFeatures(geojson: any) {
   if (!mapInstance.value) return
@@ -128,15 +98,20 @@ function applyGeoJsonToDrawFeatures(geojson: any) {
   }
 }
 
-provide('getAllDrawFeaturesGeoJson', getAllDrawFeaturesGeoJson)
-provide('applyGeoJsonToDrawFeatures', applyGeoJsonToDrawFeatures)
-
 // 共享地图实例给子组件
 function getMap(): L.Map | null {
   return mapInstance.value
 }
 provide('getMap', getMap)
 provide('showToast', showToast)
+
+// 监听编辑器请求应用 GeoJSON
+watch(() => store.pendingGeoJsonToApply, (geojson) => {
+  if (geojson) {
+    applyGeoJsonToDrawFeatures(geojson)
+    store.pendingGeoJsonToApply = null
+  }
+})
 
 const cursorClass = computed(() => {
   const mode = store.toolMode
