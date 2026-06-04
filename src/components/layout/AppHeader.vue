@@ -24,11 +24,11 @@ const store = useAppStore()
     <div class="flex items-center gap-2">
       <span class="text-xs text-gray-500 hidden sm:inline">在线GIS工具平台</span>
       <button
-        @click="store.setPropertyPanelOpen(!store.propertyPanelOpen)"
+        @click="store.setGeoEditorOpen(!store.geoEditorOpen)"
         class="p-1.5 rounded hover:bg-gray-700 transition-colors"
-        title="属性面板"
+        title="JSON 编辑器"
       >
-        <PanelRightClose v-if="store.propertyPanelOpen" :size="18" />
+        <PanelRightClose v-if="store.geoEditorOpen" :size="18" />
         <PanelRightOpen v-else :size="18" />
       </button>
     </div>

@@ -4,7 +4,7 @@ import type { ToolMode } from '../../types'
 import {
   Move, MapPin, PenTool, Pentagon, Square, Circle, Type,
   Ruler, Triangle, Compass, Search, Download, Crosshair,
-  Layers, Navigation, BarChart3, FileJson,
+  Layers, Navigation, BarChart3,
 } from 'lucide-vue-next'
 
 const store = useAppStore()
@@ -82,22 +82,6 @@ const groups = ['基础', '绘制', '测量']
           {{ tool.label }}
         </button>
       </div>
-    </div>
-
-    <div class="px-2 py-2 border-t border-gray-700 mt-auto">
-      <div class="text-xs text-gray-500 uppercase tracking-wider px-2 mb-1">面板</div>
-      <button
-        @click="store.setGeoEditorOpen(!store.geoEditorOpen)"
-        :class="[
-          'w-full flex items-center gap-2.5 px-3 py-1.5 rounded text-sm transition-colors',
-          store.geoEditorOpen
-            ? 'bg-emerald-600/30 text-emerald-400'
-            : 'text-gray-300 hover:bg-gray-700'
-        ]"
-      >
-        <FileJson :size="18" />
-        JSON 编辑器
-      </button>
     </div>
   </aside>
 </template>
