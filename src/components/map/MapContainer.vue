@@ -3,6 +3,7 @@ import { ref, shallowRef, onMounted, onUnmounted, watch, computed, provide } fro
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useAppStore, drawTempPoints, measureTempPoints } from '../../stores/appStore'
+import type { DrawFeature } from '../../types'
 import { calcDistance, calcArea, calcBearing } from '../../utils/measurement'
 import SearchTool from '../tools/SearchTool.vue'
 import ImportExport from '../tools/ImportExport.vue'
@@ -55,6 +56,81 @@ function showToast(msg: string, duration = 2000) {
   toastTimer = setTimeout(() => { toastMsg.value = '' }, duration)
 }
 
+// 将绘制要素转为 GeoJSON
+function drawFeatureToGeoJson(feature: DrawFeature): any {
+  const { type, coordinates, properties } = feature
+  if (type === 'marker' || type === 'text') {
+    const coords = coordinates as [number, number]
+    return { type: 'Feature', properties, geometry: { type: 'Point', coordinates: [coords[1], coords[0]] } }
+  }
+  if (type === 'polyline') {
+    const coords = coordinates as [number, number][]
+    return { type: 'Feature', properties, geometry: { type: 'LineString', coordinates: coords.map(([lat, lng]) => [lng, lat]) } }
+  }
+  if (type === 'polygon' || type === 'rectangle') {
+    const coords = coordinates as [number, number][]
+    return { type: 'Feature', properties, geometry: { type: 'Polygon', coordinates: [coords.map(([lat, lng]) => [lng, lat])] } }
+  }
+  if (type === 'circle') {
+    const coords = coordinates as [number, number][]
+    return { type: 'Feature', properties: { ...properties, sub_type: 'circle' }, geometry: { type: 'Point', coordinates: [coords[0][1], coords[0][0]] } }
+  }
+  return null
+}
+
+// 获取所有绘制要素的 GeoJSON FeatureCollection
+function getAllDrawFeaturesGeoJson(): any {
+  return {
+    type: 'FeatureCollection',
+    features: store.drawFeatures.map(drawFeatureToGeoJson).filter(Boolean),
+  }
+}
+
+// 从 GeoJSON 更新绘制要素
+function applyGeoJsonToDrawFeatures(geojson: any) {
+  if (!mapInstance.value) return
+  drawLayerGroup.clearLayers()
+  store.drawFeatures.splice(0, store.drawFeatures.length)
+
+  const fc = geojson.type === 'FeatureCollection' ? geojson : { type: 'FeatureCollection', features: [geojson] }
+  for (const feature of fc.features) {
+    if (!feature.geometry) continue
+    const id = `draw-${++featureCounter}`
+    const { geometry, properties = {} } = feature
+
+    if (geometry.type === 'Point') {
+      const [lng, lat] = geometry.coordinates
+      const latlng: [number, number] = [lat, lng]
+      const isCircle = properties.sub_type === 'circle' || properties.radius
+      if (isCircle && properties.radius) {
+        const radius = typeof properties.radius === 'number' ? properties.radius : 1000
+        L.circle(latlng, { radius, color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
+        store.addDrawFeature({ id, type: 'circle', coordinates: [latlng, latlng], properties: { ...properties, name: properties.name || `圆 ${featureCounter}`, radius }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+      } else {
+        const marker = L.marker(latlng).addTo(drawLayerGroup)
+        marker.bindTooltip(properties.name || `标注点 ${featureCounter}`, { permanent: false }).openTooltip()
+        marker.on('click', (ev: L.LeafletEvent) => {
+          L.DomEvent.stopPropagation(ev)
+          store.setSelectedFeature({ id, type: 'marker', coordinates: latlng, properties: { ...properties, name: properties.name || `标注点 ${featureCounter}` }, style: {} })
+          store.setPropertyPanelOpen(true)
+        })
+        store.addDrawFeature({ id, type: 'marker', coordinates: latlng, properties: { ...properties, name: properties.name || `标注点 ${featureCounter}` }, style: {} })
+      }
+    } else if (geometry.type === 'LineString') {
+      const coordinates: [number, number][] = (geometry.coordinates as [number, number][]).map((c: [number, number]) => [c[1], c[0]] as [number, number])
+      L.polyline(coordinates, { color: '#10b981', weight: 3 }).addTo(drawLayerGroup)
+      store.addDrawFeature({ id, type: 'polyline', coordinates, properties: { ...properties, name: properties.name || `线 ${featureCounter}` }, style: { color: '#10b981', weight: 3 } })
+    } else if (geometry.type === 'Polygon') {
+      const coordinates: [number, number][] = (geometry.coordinates[0] as [number, number][]).map((c: [number, number]) => [c[1], c[0]] as [number, number])
+      L.polygon(coordinates, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
+      store.addDrawFeature({ id, type: 'polygon', coordinates, properties: { ...properties, name: properties.name || `多边形 ${featureCounter}` }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+    }
+  }
+}
+
+provide('getAllDrawFeaturesGeoJson', getAllDrawFeaturesGeoJson)
+provide('applyGeoJsonToDrawFeatures', applyGeoJsonToDrawFeatures)
+
 // 共享地图实例给子组件
 function getMap(): L.Map | null {
   return mapInstance.value
@@ -68,25 +144,25 @@ const cursorClass = computed(() => {
   return 'cursor-grab'
 })
 
+const canFinish = computed(() => {
+  const mode = store.toolMode
+  if (mode === 'draw-polygon' && drawTempPoints.length >= 3) return true
+  if (mode === 'draw-polyline' && drawTempPoints.length >= 2) return true
+  if (mode === 'measure-area' && measureTempPoints.length >= 3) return true
+  if (mode === 'measure-distance' && measureTempPoints.length >= 2) return true
+  return false
+})
+
+function finishCurrent() {
+  const mode = store.toolMode
+  if (mode === 'draw-polygon') finishDrawPolygon()
+  else if (mode === 'draw-polyline') finishDrawPolyline()
+  else if (mode === 'measure-area') finishMeasureArea()
+  else if (mode === 'measure-distance') finishMeasureDistance()
+}
+
 // 绘制提示信息
 const drawHint = ref('')
-
-// 双击检测
-let lastClickTime = 0
-let lastClickLatlng: [number, number] | null = null
-const DBLCLICK_THRESHOLD = 350 // ms
-const DBLCLICK_DISTANCE = 10 // pixels approx
-
-function isDoubleClick(e: L.LeafletMouseEvent): boolean {
-  const now = Date.now()
-  const isDbl = lastClickLatlng &&
-    now - lastClickTime < DBLCLICK_THRESHOLD &&
-    Math.abs(e.latlng.lat - lastClickLatlng[0]) < 0.001 &&
-    Math.abs(e.latlng.lng - lastClickLatlng[1]) < 0.001
-  lastClickTime = now
-  lastClickLatlng = [e.latlng.lat, e.latlng.lng]
-  return !!isDbl
-}
 
 onMounted(() => {
   if (!mapEl.value) return
@@ -108,6 +184,12 @@ onMounted(() => {
 
   // 禁用默认双击缩放，以便双击用于完成绘制
   map.doubleClickZoom.disable()
+
+  // 双击完成绘制/测量
+  map.on('dblclick', (e: L.LeafletMouseEvent) => {
+    e.originalEvent.preventDefault()
+    handleDblClick(e)
+  })
 
   // 地图点击事件
   map.on('click', (e: L.LeafletMouseEvent) => {
@@ -234,12 +316,51 @@ function finishMeasureArea() {
   setTimeout(() => { drawHint.value = '' }, 3000)
 }
 
+function finishMeasureDistance() {
+  if (measureTempPoints.length < 2) {
+    drawHint.value = '至少需要 2 个点才能完成距离测量'
+    return
+  }
+  const points = [...measureTempPoints]
+  measureLayerGroup.clearLayers()
+  const result = calcDistance(points)
+  L.polyline(points, { color: '#f59e0b', weight: 3, dashArray: '8 4' })
+    .bindTooltip(`${result.value.toFixed(2)} ${result.unit}`, { permanent: true })
+    .addTo(measureLayerGroup)
+  store.clearMeasureResults()
+  store.addMeasureResult({ type: 'distance', value: result.value, unit: result.unit, coordinates: [...points] })
+  measureTempPoints.length = 0
+  clearPreview()
+  drawHint.value = `距离: ${result.value.toFixed(2)} ${result.unit}`
+  setTimeout(() => { drawHint.value = '' }, 3000)
+}
+
+function handleDblClick(_e: L.LeafletMouseEvent) {
+  const mode = store.toolMode
+  const points = mode.startsWith('draw-') ? drawTempPoints : measureTempPoints
+
+  // Remove the point added by the second click of the double-click
+  if (points.length > 0) points.pop()
+  // Also remove the point added by the first click if it's a duplicate of the previous point
+  if (points.length >= 2) {
+    const last = points[points.length - 1]
+    const prev = points[points.length - 2]
+    if (Math.abs(last[0] - prev[0]) < 0.0001 && Math.abs(last[1] - prev[1]) < 0.0001) {
+      points.pop()
+    }
+  }
+
+  if (mode === 'measure-area' && measureTempPoints.length >= 3) finishMeasureArea()
+  else if (mode === 'draw-polygon' && drawTempPoints.length >= 3) finishDrawPolygon()
+  else if (mode === 'draw-polyline' && drawTempPoints.length >= 2) finishDrawPolyline()
+  else if (mode === 'measure-distance' && measureTempPoints.length >= 2) finishMeasureDistance()
+}
+
 function handleMapClick(e: L.LeafletMouseEvent) {
   const mode = store.toolMode
   if (mode === 'pan') return
 
   const latlng: [number, number] = [e.latlng.lat, e.latlng.lng]
-  const dblClick = isDoubleClick(e)
 
   // ---- 标注点 ----
   if (mode === 'draw-marker') {
@@ -279,10 +400,6 @@ function handleMapClick(e: L.LeafletMouseEvent) {
 
   // ---- 画线（双击完成）----
   if (mode === 'draw-polyline') {
-    if (dblClick && drawTempPoints.length >= 2) {
-      finishDrawPolyline()
-      return
-    }
     drawTempPoints.push(latlng)
     drawHint.value = `已点击 ${drawTempPoints.length} 个点。双击完成绘制，继续点击添加点`
     return
@@ -290,10 +407,6 @@ function handleMapClick(e: L.LeafletMouseEvent) {
 
   // ---- 画多边形（双击完成）----
   if (mode === 'draw-polygon') {
-    if (dblClick && drawTempPoints.length >= 3) {
-      finishDrawPolygon()
-      return
-    }
     drawTempPoints.push(latlng)
     const count = drawTempPoints.length
     if (count < 3) {
@@ -346,22 +459,6 @@ function handleMapClick(e: L.LeafletMouseEvent) {
 
   // ---- 测距（双击完成）----
   if (mode === 'measure-distance') {
-    if (dblClick && measureTempPoints.length >= 2) {
-      // 双击完成
-      const points = [...measureTempPoints]
-      measureLayerGroup.clearLayers()
-      const result = calcDistance(points)
-      L.polyline(points, { color: '#f59e0b', weight: 3, dashArray: '8 4' })
-        .bindTooltip(`${result.value.toFixed(2)} ${result.unit}`, { permanent: true })
-        .addTo(measureLayerGroup)
-      store.clearMeasureResults()
-      store.addMeasureResult({ type: 'distance', value: result.value, unit: result.unit, coordinates: [...points] })
-      measureTempPoints.length = 0
-      clearPreview()
-      drawHint.value = `距离: ${result.value.toFixed(2)} ${result.unit}`
-      setTimeout(() => { drawHint.value = '' }, 3000)
-      return
-    }
     measureTempPoints.push(latlng)
     const points = [...measureTempPoints]
     if (points.length >= 2) {
@@ -379,10 +476,6 @@ function handleMapClick(e: L.LeafletMouseEvent) {
 
   // ---- 测面（双击完成）----
   if (mode === 'measure-area') {
-    if (dblClick && measureTempPoints.length >= 3) {
-      finishMeasureArea()
-      return
-    }
     measureTempPoints.push(latlng)
     const points = [...measureTempPoints]
     if (points.length >= 3) {
@@ -494,8 +587,6 @@ watch(() => store.toolMode, (newMode, oldMode) => {
     drawTempPoints.length = 0
     measureTempPoints.length = 0
     clearPreview()
-    lastClickTime = 0
-    lastClickLatlng = null
   }
   if (newMode.startsWith('measure')) {
     store.clearMeasureResults()
@@ -617,9 +708,10 @@ const showBasemapSwitcher = ref(false)
 
     <!-- 绘制/测量提示 -->
     <div v-if="drawHint" class="absolute top-3 left-1/2 -translate-x-1/2 z-[1001]">
-      <div class="bg-gray-800/95 backdrop-blur border border-emerald-600/50 rounded-lg px-4 py-2 text-sm text-emerald-400 shadow-lg">
-        {{ drawHint }}
-        <span class="text-gray-500 ml-2">按 ESC 退出</span>
+      <div class="bg-gray-800/95 backdrop-blur border border-emerald-600/50 rounded-lg px-4 py-2 text-sm text-emerald-400 shadow-lg flex items-center gap-2">
+        <span>{{ drawHint }}</span>
+        <button v-if="canFinish" @click="finishCurrent" class="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 rounded text-xs text-white transition-colors">完成</button>
+        <span class="text-gray-500">按 ESC 退出</span>
       </div>
     </div>
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, inject } from 'vue'
 import { useAppStore } from '../../stores/appStore'
 import {
   bufferAnalysis, convexHullAnalysis, centerOfMass, centroidCalc,
@@ -36,6 +36,7 @@ const analysisOptions: { value: AnalysisType; label: string; desc: string; group
 const groups = ['几何分析', '位置计算', '测量计算', '网格与采样']
 
 const store = useAppStore()
+const getAllDrawFeaturesGeoJson = inject<() => any>('getAllDrawFeaturesGeoJson')
 const analysisType = ref<AnalysisType>('buffer')
 const bufferRadius = ref('5')
 const bufferUnit = ref<'kilometers' | 'miles' | 'meters'>('kilometers')
@@ -56,16 +57,21 @@ const point2Lat = ref('31.2304')
 
 function runAnalysis() {
   const geoLayers = store.layers.filter((l) => l.type === 'geojson')
+  const drawFc = getAllDrawFeaturesGeoJson ? getAllDrawFeaturesGeoJson() : null
+  const hasDrawFeatures = drawFc && drawFc.features && drawFc.features.length > 0
 
   try {
     let result: any
 
     // 需要图层的分析
     if (['buffer', 'convex', 'center', 'centroid', 'tin', 'simplify', 'bbox'].includes(analysisType.value)) {
-      if (geoLayers.length === 0) { status.value = '没有可分析的数据，请先导入或绘制要素'; return }
+      if (geoLayers.length === 0 && !hasDrawFeatures) { status.value = '没有可分析的数据，请先导入或绘制要素'; return }
       const fc = {
         type: 'FeatureCollection' as const,
-        features: geoLayers.flatMap((l) => (l.data as any).features || [l.data]),
+        features: [
+          ...geoLayers.flatMap((l) => (l.data as any).features || [l.data]),
+          ...(hasDrawFeatures ? drawFc.features : []),
+        ],
       }
 
       if (analysisType.value === 'buffer') result = bufferAnalysis(fc, parseFloat(bufferRadius.value), bufferUnit.value)
@@ -100,10 +106,13 @@ function runAnalysis() {
     }
 
     if (analysisType.value === 'area') {
-      if (geoLayers.length === 0) { status.value = '没有可计算的数据，请先导入多边形要素'; return }
+      if (geoLayers.length === 0 && !hasDrawFeatures) { status.value = '没有可计算的数据，请先导入或绘制多边形要素'; return }
       const fc = {
         type: 'FeatureCollection' as const,
-        features: geoLayers.flatMap((l) => (l.data as any).features || [l.data]),
+        features: [
+          ...geoLayers.flatMap((l) => (l.data as any).features || [l.data]),
+          ...(hasDrawFeatures ? drawFc.features : []),
+        ],
       }
       const a = area(fc as any)
       const sqKm = a / 1e6
@@ -138,10 +147,13 @@ function runAnalysis() {
     }
 
     if (analysisType.value === 'grid') {
-      if (geoLayers.length === 0) { status.value = '请先导入数据以确定范围'; return }
+      if (geoLayers.length === 0 && !hasDrawFeatures) { status.value = '请先导入或绘制数据以确定范围'; return }
       const fc = {
         type: 'FeatureCollection' as const,
-        features: geoLayers.flatMap((l) => (l.data as any).features || [l.data]),
+        features: [
+          ...geoLayers.flatMap((l) => (l.data as any).features || [l.data]),
+          ...(hasDrawFeatures ? drawFc.features : []),
+        ],
       }
       const bbox = bboxCalc(fc)
       result = squareGrid(bbox as [number, number, number, number], parseFloat(gridCellSize.value), gridUnit.value)
@@ -149,10 +161,13 @@ function runAnalysis() {
 
     if (analysisType.value === 'random') {
       let bbox: [number, number, number, number] | undefined
-      if (geoLayers.length > 0) {
+      if (geoLayers.length > 0 || hasDrawFeatures) {
         const fc = {
           type: 'FeatureCollection' as const,
-          features: geoLayers.flatMap((l) => (l.data as any).features || [l.data]),
+          features: [
+            ...geoLayers.flatMap((l) => (l.data as any).features || [l.data]),
+            ...(hasDrawFeatures ? drawFc.features : []),
+          ],
         }
         bbox = bboxCalc(fc) as [number, number, number, number]
       }

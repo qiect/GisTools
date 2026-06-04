@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, inject } from 'vue'
 import { useAppStore } from '../../stores/appStore'
 import { parseGeoJSON, parseKML, parseCSV, exportGeoJSON, downloadFile } from '../../utils/dataIO'
 import type { GeoLayer } from '../../types'
 import { Upload, FileJson, X } from 'lucide-vue-next'
 
 const store = useAppStore()
+const getAllDrawFeaturesGeoJson = inject<() => any>('getAllDrawFeaturesGeoJson')
 const status = ref('')
 const fileInputKey = ref(0) // 用于重置 input
 const fileInput = ref<HTMLInputElement>()
@@ -40,10 +41,15 @@ async function handleImport(e: Event) {
 
 function handleExport() {
   const geoLayers = store.layers.filter((l) => l.type === 'geojson')
-  if (geoLayers.length === 0) { status.value = '没有可导出的图层'; return }
+  const drawFc = getAllDrawFeaturesGeoJson ? getAllDrawFeaturesGeoJson() : null
+  const hasDrawFeatures = drawFc && drawFc.features && drawFc.features.length > 0
+  if (geoLayers.length === 0 && !hasDrawFeatures) { status.value = '没有可导出的数据，请先导入或绘制要素'; return }
   const fc = {
     type: 'FeatureCollection' as const,
-    features: geoLayers.flatMap((l) => (l.data as any).features || [l.data]),
+    features: [
+      ...geoLayers.flatMap((l) => (l.data as any).features || [l.data]),
+      ...(hasDrawFeatures ? drawFc.features : []),
+    ],
   }
   downloadFile(exportGeoJSON(fc), 'export.geojson', 'application/geo+json')
   status.value = '导出成功'
