@@ -8,6 +8,7 @@ import { Upload, FileJson, X } from 'lucide-vue-next'
 const store = useAppStore()
 const status = ref('')
 const fileInputKey = ref(0) // 用于重置 input
+const fileInput = ref<HTMLInputElement>()
 
 async function handleImport(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
@@ -60,8 +61,8 @@ function handleExport() {
       </div>
       <div class="space-y-3">
         <div>
-          <input :key="fileInputKey" type="file" accept=".geojson,.json,.kml,.csv" @change="handleImport" class="hidden" :id="'file-input-' + fileInputKey" />
-          <button @click="document.getElementById('file-input-' + fileInputKey)?.click()" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-gray-600 rounded-lg hover:border-emerald-500 transition-colors text-sm">
+          <input ref="fileInput" :key="fileInputKey" type="file" accept=".geojson,.json,.kml,.csv" @change="handleImport" class="hidden" />
+          <button @click="fileInput?.click()" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-gray-600 rounded-lg hover:border-emerald-500 transition-colors text-sm">
             <Upload :size="16" /> 导入文件（GeoJSON / KML / CSV）
           </button>
         </div>

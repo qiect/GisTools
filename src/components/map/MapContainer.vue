@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, computed, provide, nextTick } from 'vue'
+import { ref, shallowRef, onMounted, watch, computed, provide, nextTick } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useAppStore, drawTempPoints, measureTempPoints } from '../../stores/appStore'
@@ -22,7 +22,7 @@ L.Icon.Default.mergeOptions({
 
 const store = useAppStore()
 const mapEl = ref<HTMLDivElement>()
-const mapInstance = ref<L.Map | null>(null)
+const mapInstance = shallowRef<L.Map | null>(null)
 
 const basemaps: Record<string, { url: string; attribution: string; label: string }> = {
   osm: { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '&copy; OpenStreetMap', label: 'OpenStreetMap' },
@@ -40,7 +40,7 @@ let measureLayerGroup: L.LayerGroup
 let geoLayerGroup: L.LayerGroup
 
 // 实时预览图层
-let previewLayer: L.Polyline | L.Polygon | null = null
+let previewLayer: L.Layer | null = null
 
 // 共享地图实例给子组件
 function getMap(): L.Map | null {
