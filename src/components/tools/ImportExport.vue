@@ -3,10 +3,11 @@ import { ref } from 'vue'
 import { useAppStore } from '../../stores/appStore'
 import { parseGeoJSON, parseKML, parseCSV, exportGeoJSON, downloadFile } from '../../utils/dataIO'
 import type { GeoLayer } from '../../types'
-import { Upload, Download, FileJson } from 'lucide-vue-next'
+import { Upload, FileJson, X } from 'lucide-vue-next'
 
 const store = useAppStore()
 const status = ref('')
+const fileInputKey = ref(0) // 用于重置 input
 
 async function handleImport(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
@@ -31,6 +32,9 @@ async function handleImport(e: Event) {
   } catch (err: any) {
     status.value = `导入失败: ${err.message}`
   }
+
+  // 重置 input 以允许重复导入同一文件
+  fileInputKey.value++
 }
 
 function handleExport() {
@@ -48,11 +52,16 @@ function handleExport() {
 <template>
   <div class="absolute top-3 left-1/2 -translate-x-1/2 z-[1000]">
     <div class="bg-gray-800/95 backdrop-blur border border-gray-600 rounded-lg p-4 shadow-xl min-w-[320px]">
-      <h3 class="text-sm font-semibold mb-3">数据导入导出</h3>
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-semibold">数据导入导出</h3>
+        <button @click="store.setToolMode('pan')" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white">
+          <X :size="16" />
+        </button>
+      </div>
       <div class="space-y-3">
         <div>
-          <input type="file" accept=".geojson,.json,.kml,.csv" @change="handleImport" class="hidden" id="file-input" />
-          <button @click="document.getElementById('file-input')?.click()" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-gray-600 rounded-lg hover:border-emerald-500 transition-colors text-sm">
+          <input :key="fileInputKey" type="file" accept=".geojson,.json,.kml,.csv" @change="handleImport" class="hidden" :id="'file-input-' + fileInputKey" />
+          <button @click="document.getElementById('file-input-' + fileInputKey)?.click()" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-gray-600 rounded-lg hover:border-emerald-500 transition-colors text-sm">
             <Upload :size="16" /> 导入文件（GeoJSON / KML / CSV）
           </button>
         </div>

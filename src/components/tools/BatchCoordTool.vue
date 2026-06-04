@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useAppStore } from '../../stores/appStore'
 import { wgs84ToGcj02, gcj02ToWgs84, gcj02ToBd09, bd09ToGcj02 } from '../../utils/coordinate'
 import { downloadFile } from '../../utils/dataIO'
-import { Navigation, Download, Copy } from 'lucide-vue-next'
+import { Navigation, Download, Copy, X } from 'lucide-vue-next'
 
 type ChinaCoordSystem = 'WGS84' | 'GCJ02' | 'BD09'
 
@@ -12,6 +13,7 @@ const systems: { value: ChinaCoordSystem; label: string }[] = [
   { value: 'BD09', label: 'BD-09' },
 ]
 
+const store = useAppStore()
 const input = ref('116.4074,39.9042\n121.4737,31.2304\n113.2644,23.1291')
 const fromSystem = ref<ChinaCoordSystem>('WGS84')
 const toSystem = ref<ChinaCoordSystem>('GCJ02')
@@ -52,9 +54,12 @@ function handleCopy() {
 <template>
   <div class="absolute top-3 left-1/2 -translate-x-1/2 z-[1000]">
     <div class="bg-gray-800/95 backdrop-blur border border-gray-600 rounded-lg p-4 shadow-xl min-w-[440px]">
-      <div class="flex items-center gap-2 mb-3">
-        <Navigation :size="16" class="text-emerald-400" />
-        <h3 class="text-sm font-semibold">批量坐标转换</h3>
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <Navigation :size="16" class="text-emerald-400" />
+          <h3 class="text-sm font-semibold">批量坐标转换</h3>
+        </div>
+        <button @click="store.setToolMode('pan')" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white"><X :size="16" /></button>
       </div>
       <div class="space-y-3">
         <div class="flex gap-2">

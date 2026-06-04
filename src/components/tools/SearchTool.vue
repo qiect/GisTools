@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, inject } from 'vue'
+import { useAppStore } from '../../stores/appStore'
 import { useGeocoding } from '../../composables/useGeocoding'
-import { Search, MapPin, Loader2 } from 'lucide-vue-next'
+import { Search, MapPin, Loader2, X } from 'lucide-vue-next'
 import type L from 'leaflet'
 
+const store = useAppStore()
 const getMap = inject<() => L.Map | null>('getMap')!
 const { results, loading, search } = useGeocoding()
 const query = ref('')
@@ -41,6 +43,9 @@ function handleCoordSearch() {
         <button @click="handleSearch" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 rounded text-sm transition-colors shrink-0">
           <Loader2 v-if="loading" :size="14" class="animate-spin" />
           <span v-else>搜索</span>
+        </button>
+        <button @click="store.setToolMode('pan')" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white shrink-0">
+          <X :size="14" />
         </button>
       </div>
       <div v-if="results.length > 0" class="border-t border-gray-700 max-h-60 overflow-y-auto">

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useAppStore } from '../../stores/appStore'
 import { transformCoord, wgs84ToGcj02, gcj02ToWgs84, gcj02ToBd09, bd09ToGcj02 } from '../../utils/coordinate'
-import { Crosshair, ArrowRightLeft, Copy } from 'lucide-vue-next'
+import { Crosshair, ArrowRightLeft, Copy, X } from 'lucide-vue-next'
 
 type ChinaCoordSystem = 'WGS84' | 'GCJ02' | 'BD09'
 
@@ -19,6 +20,7 @@ const epsgSystems = [
   { value: 'EPSG:32651', label: 'UTM 51N' },
 ]
 
+const store = useAppStore()
 const tab = ref<'china' | 'epsg'>('china')
 const inputLng = ref('116.4074')
 const inputLat = ref('39.9042')
@@ -58,9 +60,12 @@ function copyResult() {
 <template>
   <div class="absolute top-3 left-1/2 -translate-x-1/2 z-[1000]">
     <div class="bg-gray-800/95 backdrop-blur border border-gray-600 rounded-lg p-4 shadow-xl min-w-[380px]">
-      <div class="flex items-center gap-2 mb-3">
-        <Crosshair :size="16" class="text-emerald-400" />
-        <h3 class="text-sm font-semibold">坐标系转换</h3>
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <Crosshair :size="16" class="text-emerald-400" />
+          <h3 class="text-sm font-semibold">坐标系转换</h3>
+        </div>
+        <button @click="store.setToolMode('pan')" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white"><X :size="16" /></button>
       </div>
 
       <div class="flex gap-1 mb-3 bg-gray-900 rounded p-0.5">

@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { useAppStore } from '../../stores/appStore'
 import type { GeoLayer } from '../../types'
-import { BarChart3, Play } from 'lucide-vue-next'
+import { BarChart3, Play, X } from 'lucide-vue-next'
 
 type VizType = 'heatmap' | 'cluster' | 'choropleth'
 
@@ -36,9 +36,12 @@ function runViz() {
 <template>
   <div class="absolute top-3 left-1/2 -translate-x-1/2 z-[1000]">
     <div class="bg-gray-800/95 backdrop-blur border border-gray-600 rounded-lg p-4 shadow-xl min-w-[340px]">
-      <div class="flex items-center gap-2 mb-3">
-        <BarChart3 :size="16" class="text-emerald-400" />
-        <h3 class="text-sm font-semibold">数据可视化</h3>
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <BarChart3 :size="16" class="text-emerald-400" />
+          <h3 class="text-sm font-semibold">数据可视化</h3>
+        </div>
+        <button @click="store.setToolMode('pan')" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white"><X :size="16" /></button>
       </div>
       <div class="space-y-3">
         <div class="grid grid-cols-3 gap-1">

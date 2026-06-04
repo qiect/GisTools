@@ -4,7 +4,7 @@ import type { ToolMode } from '../../types'
 import {
   Move, MapPin, PenTool, Pentagon, Square, Circle, Type,
   Ruler, Triangle, Compass, Search, Download, Crosshair,
-  Layers, Navigation, BarChart3, Mountain, Route,
+  Layers, Navigation, BarChart3,
 } from 'lucide-vue-next'
 
 const store = useAppStore()
@@ -29,15 +29,14 @@ const tools: ToolItem[] = [
   { mode: 'measure-angle', label: '测方位角', icon: Triangle, group: '测量' },
 ]
 
+// 移除未实现的 3d-terrain 和 gpx-viewer
 const panelTools: { mode: ToolMode; label: string; icon: any }[] = [
   { mode: 'search', label: '搜索定位', icon: Search },
   { mode: 'import-export', label: '导入导出', icon: Download },
   { mode: 'coord-transform', label: '坐标转换', icon: Crosshair },
   { mode: 'spatial-analysis', label: '空间分析', icon: Compass },
   { mode: 'visualization', label: '数据可视化', icon: BarChart3 },
-  { mode: '3d-terrain', label: '3D地形', icon: Mountain },
   { mode: 'batch-coord', label: '批量坐标转换', icon: Navigation },
-  { mode: 'gpx-viewer', label: 'GPX轨迹', icon: Route },
   { mode: 'layers', label: '图层管理', icon: Layers },
 ]
 
