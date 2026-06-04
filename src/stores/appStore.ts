@@ -22,7 +22,7 @@ export function drawFeatureToGeoJson(feature: DrawFeature): any {
   if (type === 'circle') {
     const coords = coordinates as [number, number][]
     const center = coords[0] // [lat, lng]
-    const radius = properties?.radius ?? 1000
+    const radius = Number(properties?.radius ?? 1000)
     // 将圆近似为64边多边形（GeoJSON标准Polygon）
     const segments = 64
     const ring: [number, number][] = []
