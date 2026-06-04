@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed, nextTick } from 'vue'
 import { useAppStore, getAllDrawFeaturesGeoJson } from '../../stores/appStore'
-import { FileJson, RotateCcw, Copy, Check, X, Pencil, Save, XCircle } from 'lucide-vue-next'
+import { FileJson, RotateCcw, Copy, Check, Pencil, Save, XCircle } from 'lucide-vue-next'
 import JsonTreeNode from './JsonTreeNode.vue'
 
 const store = useAppStore()
@@ -163,9 +163,6 @@ const treeData = computed(() => {
             <XCircle :size="12" />
           </button>
         </template>
-        <button @click="store.setGeoEditorOpen(false)" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="关闭">
-          <X :size="12" />
-        </button>
       </div>
     </div>
 
