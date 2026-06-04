@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, watch, inject, computed } from 'vue'
+import { ref, watch, inject } from 'vue'
 import { useAppStore } from '../../stores/appStore'
-import { FileJson, Play, RotateCcw, Copy, Check } from 'lucide-vue-next'
+import { FileJson, Play, RotateCcw, Copy, Check, X } from 'lucide-vue-next'
 
 const store = useAppStore()
 const getAllDrawFeaturesGeoJson = inject<() => any>('getAllDrawFeaturesGeoJson')
@@ -13,17 +13,6 @@ const copyFeedback = ref(false)
 
 // 获取当前可编辑的 GeoJSON
 function getCurrentGeoJson(): string {
-  // 优先显示选中的图层
-  if (store.selectedFeature) {
-    // 单个绘制要素
-    const fc = getAllDrawFeaturesGeoJson ? getAllDrawFeaturesGeoJson() : null
-    if (fc && fc.features) {
-      const found = fc.features.find((f: any) => f.properties?.name === store.selectedFeature?.properties?.name)
-      if (found) return JSON.stringify(found, null, 2)
-    }
-    return JSON.stringify(store.selectedFeature, null, 2)
-  }
-
   // 所有绘制要素
   if (store.drawFeatures.length > 0 && getAllDrawFeaturesGeoJson) {
     const fc = getAllDrawFeaturesGeoJson()
@@ -35,7 +24,7 @@ function getCurrentGeoJson(): string {
   if (geoLayers.length > 0) {
     const fc = {
       type: 'FeatureCollection' as const,
-      features: geoLayers.flatMap((l) => (l.data as any).features || [l.data]),
+      features: geoLayers.flatMap((l: any) => (l.data as any).features || [l.data]),
     }
     return JSON.stringify(fc, null, 2)
   }
@@ -98,9 +87,11 @@ watch(() => [...store.drawFeatures], () => {
   }
 })
 
-// 监听选中要素变化
-watch(() => store.selectedFeature, () => {
-  resetEditor()
+// 监听图层变化
+watch(() => [...store.layers], () => {
+  if (store.drawFeatures.length === 0) {
+    resetEditor()
+  }
 })
 
 // 初始化
@@ -125,6 +116,9 @@ resetEditor()
         </button>
         <button @click="applyGeoJson" class="flex items-center gap-1 px-2 py-0.5 text-[10px] bg-emerald-600 hover:bg-emerald-500 rounded text-white transition-colors">
           <Play :size="10" /> 应用
+        </button>
+        <button @click="store.setGeoEditorOpen(false)" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="关闭">
+          <X :size="12" />
         </button>
       </div>
     </div>

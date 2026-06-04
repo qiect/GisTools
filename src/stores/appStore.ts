@@ -10,6 +10,7 @@ export const useAppStore = defineStore('app', () => {
   const measureResults = ref<MeasureResult[]>([])
   const sidebarOpen = ref(true)
   const propertyPanelOpen = ref(false)
+  const geoEditorOpen = ref(false)
   const selectedFeature = ref<DrawFeature | null>(null)
 
   function setToolMode(mode: ToolMode) {
@@ -34,6 +35,7 @@ export const useAppStore = defineStore('app', () => {
   }
   function addDrawFeature(feature: DrawFeature) {
     drawFeatures.value.push(feature)
+    geoEditorOpen.value = true
   }
   function removeDrawFeature(id: string) {
     drawFeatures.value = drawFeatures.value.filter((f) => f.id !== id)
@@ -50,16 +52,19 @@ export const useAppStore = defineStore('app', () => {
   function setPropertyPanelOpen(open: boolean) {
     propertyPanelOpen.value = open
   }
+  function setGeoEditorOpen(open: boolean) {
+    geoEditorOpen.value = open
+  }
   function setSelectedFeature(feature: DrawFeature | null) {
     selectedFeature.value = feature
   }
 
   return {
     toolMode, layers, activeLayerId, drawFeatures, measureResults,
-    sidebarOpen, propertyPanelOpen, selectedFeature,
+    sidebarOpen, propertyPanelOpen, geoEditorOpen, selectedFeature,
     setToolMode, addLayer, removeLayer, toggleLayerVisibility, updateLayerOpacity,
     setActiveLayerId, addDrawFeature, removeDrawFeature, addMeasureResult,
-    clearMeasureResults, setSidebarOpen, setPropertyPanelOpen, setSelectedFeature,
+    clearMeasureResults, setSidebarOpen, setPropertyPanelOpen, setGeoEditorOpen, setSelectedFeature,
   }
 })
 

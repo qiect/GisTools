@@ -16,10 +16,12 @@ const store = useAppStore()
       <AppSidebar v-if="store.sidebarOpen" />
       <main class="flex-1 relative">
         <MapContainer />
+        <!-- 属性面板：浮动在地图右侧 -->
+        <PropertyPanel v-if="store.propertyPanelOpen" />
       </main>
-      <aside v-if="store.propertyPanelOpen" class="w-80 bg-gray-800 border-l border-gray-700 flex flex-col overflow-hidden shrink-0">
-        <GeoJsonEditor class="h-[70%] border-b border-gray-700" />
-        <PropertyPanel class="h-[30%]" />
+      <!-- GeoJSON 编辑器：独立右侧面板 -->
+      <aside v-if="store.geoEditorOpen" class="w-80 bg-gray-800 border-l border-gray-700 flex flex-col overflow-hidden shrink-0">
+        <GeoJsonEditor />
       </aside>
     </div>
   </div>
