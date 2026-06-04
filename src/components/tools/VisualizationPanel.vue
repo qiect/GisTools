@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useAppStore } from '../../stores/appStore'
+import { useAppStore, getAllDrawFeaturesGeoJson } from '../../stores/appStore'
 import type { GeoLayer } from '../../types'
 import { BarChart3, Play, X } from 'lucide-vue-next'
 
@@ -19,12 +19,29 @@ const status = ref('')
 
 function runViz() {
   const geoLayers = store.layers.filter((l) => l.type === 'geojson')
-  if (geoLayers.length === 0) { status.value = '没有可用的数据'; return }
+  const drawFc = store.drawFeatures.length > 0 ? getAllDrawFeaturesGeoJson(store.drawFeatures) : null
+  const hasDrawFeatures = drawFc && drawFc.features && drawFc.features.length > 0
+
+  // 合并所有可用数据
+  const allFeatures: any[] = []
+  for (const l of geoLayers) {
+    const data = l.data as any
+    if (data?.type === 'FeatureCollection' && Array.isArray(data.features)) {
+      allFeatures.push(...data.features)
+    } else if (data?.type === 'Feature') {
+      allFeatures.push(data)
+    }
+  }
+  if (hasDrawFeatures) allFeatures.push(...drawFc.features)
+
+  if (allFeatures.length === 0) { status.value = '没有可用的数据，请先导入或绘制要素'; return }
+
+  const data: any = { type: 'FeatureCollection', features: allFeatures }
   const newLayer: GeoLayer = {
     id: `layer-viz-${Date.now()}`,
     name: vizOptions.find((v) => v.value === vizType.value)?.label || '',
     visible: true, opacity: 1, zIndex: store.layers.length,
-    data: geoLayers[0].data,
+    data,
     type: vizType.value === 'heatmap' ? 'heatmap' : vizType.value === 'cluster' ? 'cluster' : 'geojson',
     style: { radius: radius.value },
   }

@@ -2,6 +2,10 @@
 import { ref, shallowRef, onMounted, onUnmounted, watch, computed, provide } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import 'leaflet.heat'
+import 'leaflet.markercluster'
+import 'leaflet.markercluster/dist/MarkerCluster.css'
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import { useAppStore, drawTempPoints, measureTempPoints, getAllDrawFeaturesGeoJson } from '../../stores/appStore'
 import type { DrawFeature } from '../../types'
 import { calcDistance, calcArea, calcBearing } from '../../utils/measurement'
@@ -168,6 +172,11 @@ function finishCurrent() {
 
 // 绘制提示信息
 const drawHint = ref('')
+
+// 文字标注输入
+const textInput = ref('')
+const textInputVisible = ref(false)
+const pendingTextLatlng = ref<[number, number] | null>(null)
 
 onMounted(() => {
   if (!mapEl.value) return
@@ -348,19 +357,22 @@ function finishMeasureDistance() {
   setTimeout(() => { drawHint.value = '' }, 3000)
 }
 
-// 延迟点击处理，用于区分单击和双击
-let clickTimer: ReturnType<typeof setTimeout> | null = null
-let dblClickDetected = false
-
 function handleDblClick(_e: L.LeafletMouseEvent) {
-  // 标记检测到双击，取消延迟的 click 处理
-  dblClickDetected = true
-  if (clickTimer) {
-    clearTimeout(clickTimer)
-    clickTimer = null
-  }
-
   const mode = store.toolMode
+  const points = mode.startsWith('draw-') ? drawTempPoints : measureTempPoints
+
+  // 双击时移除末尾的重复点（双击产生的两次click坐标非常接近）
+  // 使用较大的阈值，因为双击时手指可能移动
+  while (points.length >= 2) {
+    const last = points[points.length - 1]
+    const prev = points[points.length - 2]
+    const dist = Math.sqrt(Math.pow(last[0] - prev[0], 2) + Math.pow(last[1] - prev[1], 2))
+    if (dist < 0.0005) { // 约50米阈值
+      points.pop()
+    } else {
+      break
+    }
+  }
 
   // 双击完成绘制/测量
   if (mode === 'measure-area' && measureTempPoints.length >= 3) finishMeasureArea()
@@ -375,17 +387,10 @@ function handleMapClick(e: L.LeafletMouseEvent) {
 
   const latlng: [number, number] = [e.latlng.lat, e.latlng.lng]
 
-  // 需要双击完成的模式：延迟添加点，双击时取消
+  // 需要双击完成的模式：立即添加点以提供视觉反馈
   const dblClickModes = ['draw-polyline', 'draw-polygon', 'measure-distance', 'measure-area']
   if (dblClickModes.includes(mode)) {
-    if (clickTimer) clearTimeout(clickTimer)
-    dblClickDetected = false
-    clickTimer = setTimeout(() => {
-      clickTimer = null
-      if (!dblClickDetected) {
-        addPointToMode(mode, latlng)
-      }
-    }, 250)
+    addPointToMode(mode, latlng)
     return
   }
 
@@ -479,15 +484,9 @@ function processClick(mode: string, latlng: [number, number]) {
 
   // ---- 文字标注 ----
   if (mode === 'draw-text') {
-    const text = prompt('请输入标注文字：')
-    if (!text) return
-    const id = `draw-${++featureCounter}`
-    const marker = L.marker(latlng).addTo(drawLayerGroup)
-    marker.bindTooltip(text, { permanent: true, direction: 'top', offset: [0, -20] }).openTooltip()
-    store.addDrawFeature({
-      id, type: 'text', coordinates: latlng,
-      properties: { text, name: text }, style: {},
-    })
+    pendingTextLatlng.value = latlng
+    textInput.value = ''
+    textInputVisible.value = true
     return
   }
 
@@ -579,6 +578,29 @@ function processClick(mode: string, latlng: [number, number]) {
   }
 }
 
+// 确认文字标注输入
+function confirmTextInput() {
+  if (!textInput.value.trim() || !pendingTextLatlng.value) {
+    textInputVisible.value = false
+    return
+  }
+  const text = textInput.value.trim()
+  const latlng = pendingTextLatlng.value
+  const id = `draw-${++featureCounter}`
+  const marker = L.marker(latlng).addTo(drawLayerGroup)
+  marker.bindTooltip(text, { permanent: true, direction: 'top', offset: [0, -20] }).openTooltip()
+  marker.on('click', (ev: L.LeafletEvent) => {
+    L.DomEvent.stopPropagation(ev)
+    store.setSelectedFeature({ id, type: 'text', coordinates: latlng, properties: { text, name: text }, style: {} })
+  })
+  store.addDrawFeature({
+    id, type: 'text', coordinates: latlng,
+    properties: { text, name: text }, style: {},
+  })
+  textInputVisible.value = false
+  pendingTextLatlng.value = null
+}
+
 // 鼠标移动实时预览
 function handleMouseMove(e: L.LeafletMouseEvent) {
   const mode = store.toolMode
@@ -637,8 +659,6 @@ watch(() => store.toolMode, (newMode, oldMode) => {
     drawTempPoints.length = 0
     measureTempPoints.length = 0
     clearPreview()
-    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null }
-    dblClickDetected = false
   }
   if (newMode.startsWith('measure')) {
     store.clearMeasureResults()
@@ -669,7 +689,8 @@ watch(() => [...store.layers], (newLayers) => {
   if (!geoLayerGroup) return
   geoLayerGroup.clearLayers()
   newLayers.forEach((layer) => {
-    if (layer.visible && layer.type === 'geojson') {
+    if (!layer.visible) return
+    if (layer.type === 'geojson') {
       L.geoJSON(layer.data, {
         style: () => ({
           color: layer.style?.color || '#10b981',
@@ -682,6 +703,54 @@ watch(() => [...store.layers], (newLayers) => {
           return L.marker(latlng)
         },
       }).addTo(geoLayerGroup)
+    } else if (layer.type === 'heatmap') {
+      // 从 GeoJSON 数据中提取点坐标用于热力图
+      const points: [number, number, number][] = []
+      const data = layer.data as any
+      if (data.type === 'FeatureCollection') {
+        data.features.forEach((f: any) => {
+          if (f.geometry?.type === 'Point') {
+            points.push([f.geometry.coordinates[1], f.geometry.coordinates[0], 1.0])
+          } else if (f.geometry?.type === 'Polygon' || f.geometry?.type === 'LineString') {
+            f.geometry.coordinates[0]?.forEach((c: number[]) => {
+              points.push([c[1], c[0], 0.5])
+            })
+          }
+        })
+      } else if (data.type === 'Feature') {
+        if (data.geometry?.type === 'Point') {
+          points.push([data.geometry.coordinates[1], data.geometry.coordinates[0], 1.0])
+        }
+      }
+      if (points.length > 0) {
+        const radius = layer.style?.radius ?? 25
+        ;(L as any).heatLayer(points, { radius, blur: 15, maxZoom: 17, gradient: { 0.4: '#00f', 0.6: '#0f0', 0.8: '#ff0', 1.0: '#f00' } }).addTo(geoLayerGroup)
+      }
+    } else if (layer.type === 'cluster') {
+      // 从 GeoJSON 数据中提取点用于聚合显示
+      const clusterGroup = (L as any).markerClusterGroup({
+        maxClusterRadius: 50,
+        spiderfyOnMaxZoom: true,
+        showCoverageOnHover: false,
+        iconCreateFunction: (cluster: any) => {
+          const count = cluster.getChildCount()
+          let cls = 'cluster-small'
+          if (count > 100) cls = 'cluster-large'
+          else if (count > 10) cls = 'cluster-medium'
+          return L.divIcon({ html: `<div class="${cls}"><span>${count}</span></div>`, className: 'custom-cluster-icon', iconSize: L.point(40, 40) })
+        }
+      })
+      const data = layer.data as any
+      if (data.type === 'FeatureCollection') {
+        data.features.forEach((f: any) => {
+          if (f.geometry?.type === 'Point') {
+            clusterGroup.addLayer(L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]]))
+          }
+        })
+      }
+      if (clusterGroup.getLayers().length > 0) {
+        geoLayerGroup.addLayer(clusterGroup)
+      }
     }
   })
 }, { deep: true })
@@ -764,6 +833,15 @@ const showBasemapSwitcher = ref(false)
         <span>{{ drawHint }}</span>
         <button v-if="canFinish" @click="finishCurrent" class="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 rounded text-xs text-white transition-colors">完成</button>
         <span class="text-gray-500">按 ESC 退出</span>
+      </div>
+    </div>
+
+    <!-- 文字标注输入 -->
+    <div v-if="textInputVisible" class="absolute top-3 left-1/2 -translate-x-1/2 z-[1001]">
+      <div class="bg-gray-800/95 backdrop-blur border border-emerald-600/50 rounded-lg px-4 py-2 shadow-lg flex items-center gap-2">
+        <input v-model="textInput" @keydown.enter="confirmTextInput" @keydown.escape="textInputVisible = false" type="text" placeholder="输入标注文字" class="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-sm text-white outline-none focus:border-emerald-500 w-48" autofocus />
+        <button @click="confirmTextInput" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 rounded text-xs text-white">确定</button>
+        <button @click="textInputVisible = false" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-300">取消</button>
       </div>
     </div>
 
