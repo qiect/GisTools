@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import { ref, watch, computed, nextTick } from 'vue'
 import { useAppStore, getAllDrawFeaturesGeoJson } from '../../stores/appStore'
-import { FileJson, RotateCcw, Copy, Check, Pencil, Save, XCircle } from 'lucide-vue-next'
+import { parseKML, parseCSV, exportGeoJSON, downloadFile } from '../../utils/dataIO'
+import { FileJson, RotateCcw, Copy, Check, Pencil, Save, XCircle, Upload, Download } from 'lucide-vue-next'
 import JsonTreeNode from './JsonTreeNode.vue'
 
 const store = useAppStore()
 
 const editorText = ref('')
 const copyFeedback = ref(false)
+const importFeedback = ref(false)
 const editing = ref(false)
 const editText = ref('')
 const editError = ref('')
+const fileInput = ref<HTMLInputElement>()
+const fileInputKey = ref(0)
 
 // 计算当前 GeoJSON
 const currentGeoJson = computed(() => {
@@ -62,6 +66,48 @@ function saveEdit() {
     editError.value = ''
   } catch (e: any) {
     editError.value = `JSON 解析错误: ${e.message}`
+  }
+}
+
+// 导入文件
+async function handleImport(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+
+  try {
+    const text = await file.text()
+    let data: any
+    if (file.name.endsWith('.geojson') || file.name.endsWith('.json')) {
+      data = JSON.parse(text)
+    } else if (file.name.endsWith('.kml')) {
+      data = parseKML(text)
+    } else if (file.name.endsWith('.csv')) {
+      data = parseCSV(text)
+    } else {
+      editError.value = '不支持的文件格式'
+      return
+    }
+
+    // 加载到编辑器
+    editorText.value = JSON.stringify(data, null, 2)
+    store.requestApplyGeoJson(data)
+    importFeedback.value = true
+    setTimeout(() => { importFeedback.value = false }, 2000)
+  } catch (err: any) {
+    editError.value = `导入失败: ${err.message}`
+  }
+
+  fileInputKey.value++
+}
+
+// 导出文件
+function handleExport() {
+  try {
+    const parsed = JSON.parse(editorText.value)
+    const content = exportGeoJSON(parsed)
+    downloadFile(content, 'export.geojson', 'application/geo+json')
+  } catch {
+    editError.value = '导出失败：JSON 格式无效'
   }
 }
 
@@ -141,6 +187,7 @@ const treeData = computed(() => {
       <div class="flex items-center gap-1.5">
         <FileJson :size="13" class="text-emerald-400" />
         <span class="text-[11px] font-medium text-gray-200">JSON 编辑器</span>
+        <span v-if="importFeedback" class="text-[10px] text-emerald-400">已导入</span>
       </div>
       <div class="flex items-center gap-0.5">
         <template v-if="!editing">
@@ -153,6 +200,15 @@ const treeData = computed(() => {
           <button @click="copyToClipboard" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="复制">
             <Check v-if="copyFeedback" :size="12" class="text-emerald-400" />
             <Copy v-else :size="12" />
+          </button>
+          <!-- 导入 -->
+          <input ref="fileInput" :key="fileInputKey" type="file" accept=".geojson,.json,.kml,.csv" @change="handleImport" class="hidden" />
+          <button @click="fileInput?.click()" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="导入文件">
+            <Upload :size="12" />
+          </button>
+          <!-- 导出 -->
+          <button @click="handleExport" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="导出 GeoJSON">
+            <Download :size="12" />
           </button>
         </template>
         <template v-else>
@@ -172,7 +228,7 @@ const treeData = computed(() => {
         <JsonTreeNode :node="treeData" :collapsed-paths="collapsedPaths" :depth="0" @toggle="toggleCollapse" />
       </div>
       <div v-else class="text-gray-500 text-center py-8">
-        暂无数据
+        暂无数据，点击 <Upload :size="10" class="inline" /> 导入文件或绘制要素
       </div>
     </div>
 

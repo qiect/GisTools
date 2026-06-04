@@ -3,7 +3,7 @@ import { useAppStore } from '../../stores/appStore'
 import type { ToolMode } from '../../types'
 import {
   Move, MapPin, PenTool, Pentagon, Square, Circle, Type,
-  Ruler, Triangle, Compass, Search, Download, Crosshair,
+  Ruler, Triangle, Compass, Search, Crosshair,
   Layers, Navigation, BarChart3,
 } from 'lucide-vue-next'
 
@@ -31,7 +31,6 @@ const tools: ToolItem[] = [
 
 const panelTools: { mode: ToolMode; label: string; icon: any }[] = [
   { mode: 'search', label: '搜索定位', icon: Search },
-  { mode: 'import-export', label: '导入导出', icon: Download },
   { mode: 'coord-transform', label: '坐标转换', icon: Crosshair },
   { mode: 'spatial-analysis', label: '空间分析', icon: Compass },
   { mode: 'visualization', label: '数据可视化', icon: BarChart3 },
