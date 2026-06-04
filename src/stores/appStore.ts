@@ -15,7 +15,9 @@ export function drawFeatureToGeoJson(feature: DrawFeature): any {
   }
   if (type === 'polygon' || type === 'rectangle') {
     const coords = coordinates as [number, number][]
-    return { type: 'Feature', properties, geometry: { type: 'Polygon', coordinates: [coords.map(([lat, lng]) => [lng, lat])] } }
+    const ring = coords.map(([lat, lng]) => [lng, lat])
+    ring.push(ring[0]) // 闭合 LinearRing
+    return { type: 'Feature', properties, geometry: { type: 'Polygon', coordinates: [ring] } }
   }
   if (type === 'circle') {
     const coords = coordinates as [number, number][]

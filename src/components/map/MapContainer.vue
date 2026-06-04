@@ -90,7 +90,14 @@ function applyGeoJsonToDrawFeatures(geojson: any) {
       L.polyline(coordinates, { color: '#10b981', weight: 3 }).addTo(drawLayerGroup)
       store.addDrawFeature({ id, type: 'polyline', coordinates, properties: { ...properties, name: properties.name || `线 ${featureCounter}` }, style: { color: '#10b981', weight: 3 } })
     } else if (geometry.type === 'Polygon') {
-      const coordinates: [number, number][] = (geometry.coordinates[0] as [number, number][]).map((c: [number, number]) => [c[1], c[0]] as [number, number])
+      let coordinates: [number, number][] = (geometry.coordinates[0] as [number, number][]).map((c: [number, number]) => [c[1], c[0]] as [number, number])
+      // 去除 GeoJSON 闭合点（首尾重复），避免后续转换时重复闭合
+      if (coordinates.length >= 2) {
+        const first = coordinates[0], last = coordinates[coordinates.length - 1]
+        if (Math.abs(first[0] - last[0]) < 1e-10 && Math.abs(first[1] - last[1]) < 1e-10) {
+          coordinates = coordinates.slice(0, -1)
+        }
+      }
       L.polygon(coordinates, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
       store.addDrawFeature({ id, type: 'polygon', coordinates, properties: { ...properties, name: properties.name || `多边形 ${featureCounter}` }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
     }
