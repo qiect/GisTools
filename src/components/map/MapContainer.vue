@@ -361,17 +361,11 @@ function handleDblClick(_e: L.LeafletMouseEvent) {
   const mode = store.toolMode
   const points = mode.startsWith('draw-') ? drawTempPoints : measureTempPoints
 
-  // 双击时移除末尾的重复点（双击产生的两次click坐标非常接近）
-  // 使用较大的阈值，因为双击时手指可能移动
-  while (points.length >= 2) {
-    const last = points[points.length - 1]
-    const prev = points[points.length - 2]
-    const dist = Math.sqrt(Math.pow(last[0] - prev[0], 2) + Math.pow(last[1] - prev[1], 2))
-    if (dist < 0.0005) { // 约50米阈值
-      points.pop()
-    } else {
-      break
-    }
+  // 双击会先触发两次 click，每次 click 都会添加一个点
+  // 双击的两次 click 坐标非常接近，第二次是纯重复，需要移除
+  // 第一次 click 代表用户想在双击位置完成，保留
+  if (points.length >= 1) {
+    points.pop() // 移除 dblclick 的第2次 click 添加的重复点
   }
 
   // 双击完成绘制/测量
