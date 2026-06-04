@@ -11,7 +11,6 @@ import CoordTransform from '../tools/CoordTransform.vue'
 import SpatialAnalysis from '../tools/SpatialAnalysis.vue'
 import VisualizationPanel from '../tools/VisualizationPanel.vue'
 import BatchCoordTool from '../tools/BatchCoordTool.vue'
-import LayerManager from './LayerManager.vue'
 
 // 修复 Leaflet 默认 marker icon 404 问题
 delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -794,9 +793,6 @@ const showBasemapSwitcher = ref(false)
         </div>
       </div>
     </div>
-
-    <!-- 图层管理 -->
-    <LayerManager />
 
     <!-- 工具面板 -->
     <div class="absolute inset-0 pointer-events-none z-[1000]">
