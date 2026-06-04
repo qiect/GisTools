@@ -312,18 +312,21 @@ function finishMeasureDistance() {
 
 // 延迟点击处理，用于区分单击和双击
 let clickTimer: ReturnType<typeof setTimeout> | null = null
-let pendingClickLatlng: [number, number] | null = null
-const CLICK_DELAY = 250 // ms
+let lastAddedLatlng: [number, number] | null = null
 
 function handleDblClick(_e: L.LeafletMouseEvent) {
-  // 取消待执行的单击
-  if (clickTimer) {
-    clearTimeout(clickTimer)
-    clickTimer = null
-    pendingClickLatlng = null
-  }
-
+  // 双击时移除最后一次单击添加的点（双击的第二次click添加的重复点）
   const mode = store.toolMode
+  const points = mode.startsWith('draw-') ? drawTempPoints : measureTempPoints
+  if (points.length > 0 && lastAddedLatlng) {
+    const last = points[points.length - 1]
+    // 如果最后一个点和上次添加的点相同，移除它
+    if (Math.abs(last[0] - lastAddedLatlng[0]) < 0.0001 && Math.abs(last[1] - lastAddedLatlng[1]) < 0.0001) {
+      points.pop()
+    }
+  }
+  lastAddedLatlng = null
+
   // 双击完成绘制/测量
   if (mode === 'measure-area' && measureTempPoints.length >= 3) finishMeasureArea()
   else if (mode === 'draw-polygon' && drawTempPoints.length >= 3) finishDrawPolygon()
@@ -337,18 +340,11 @@ function handleMapClick(e: L.LeafletMouseEvent) {
 
   const latlng: [number, number] = [e.latlng.lat, e.latlng.lng]
 
-  // 需要双击完成的模式：延迟添加点，避免双击时多添加点
+  // 需要双击完成的模式：立即添加点，双击时移除重复点
   const dblClickModes = ['draw-polyline', 'draw-polygon', 'measure-distance', 'measure-area']
   if (dblClickModes.includes(mode)) {
-    if (clickTimer) clearTimeout(clickTimer)
-    pendingClickLatlng = latlng
-    clickTimer = setTimeout(() => {
-      clickTimer = null
-      if (pendingClickLatlng) {
-        addPointToMode(mode, pendingClickLatlng)
-        pendingClickLatlng = null
-      }
-    }, CLICK_DELAY)
+    addPointToMode(mode, latlng)
+    lastAddedLatlng = latlng
     return
   }
 
@@ -587,7 +583,8 @@ watch(() => store.toolMode, (newMode, oldMode) => {
     drawTempPoints.length = 0
     measureTempPoints.length = 0
     clearPreview()
-    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; pendingClickLatlng = null }
+    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null }
+    lastAddedLatlng = null
   }
   if (newMode.startsWith('measure')) {
     store.clearMeasureResults()
