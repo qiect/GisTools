@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}
+
+.custom-cluster-icon {
+  background: none !important;
+}
+.cluster-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: white;
+}
+.cluster-small {
+  background: rgba(16, 185, 129, 0.7);
+}
+.cluster-medium {
+  background: rgba(245, 158, 11, 0.7);
+}
+.cluster-large {
+  background: rgba(239, 68, 68, 0.7);
+}
+
+.leaflet-control-zoom {
+  display: none !important;
+}
+.leaflet-control-attribution {
+  background: rgba(17, 24, 39, 0.8) !important;
+  color: #6b7280 !important;
+  font-size: 10px !important;
+}
+.leaflet-control-attribution a {
+  color: #9ca3af !important;
+}
+
+.leaflet-tooltip {
+  background: rgba(17, 24, 39, 0.9) !important;
+  border: 1px solid #374151 !important;
+  color: #e5e7eb !important;
+  border-radius: 6px !important;
+  padding: 4px 8px !important;
+  font-size: 12px !important;
+}
+.leaflet-tooltip-top::before {
+  border-top-color: rgba(17, 24, 39, 0.9) !important;
+}
+.leaflet-tooltip-bottom::before {
+  border-bottom-color: rgba(17, 24, 39, 0.9) !important;
+}
+.leaflet-tooltip-left::before {
+  border-left-color: rgba(17, 24, 39, 0.9) !important;
+}
+.leaflet-tooltip-right::before {
+  border-right-color: rgba(17, 24, 39, 0.9) !important;
+}
