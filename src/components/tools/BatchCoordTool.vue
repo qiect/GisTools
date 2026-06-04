@@ -18,6 +18,7 @@ const input = ref('116.4074,39.9042\n121.4737,31.2304\n113.2644,23.1291')
 const fromSystem = ref<ChinaCoordSystem>('WGS84')
 const toSystem = ref<ChinaCoordSystem>('GCJ02')
 const results = ref<string[]>([])
+const copyFeedback = ref(false)
 
 function convertPoint(lng: number, lat: number, from: ChinaCoordSystem, to: ChinaCoordSystem): [number, number] {
   if (from === to) return [lng, lat]
@@ -48,6 +49,8 @@ function handleExport() {
 
 function handleCopy() {
   navigator.clipboard.writeText(results.value.join('\n'))
+  copyFeedback.value = true
+  setTimeout(() => { copyFeedback.value = false }, 1500)
 }
 </script>
 
@@ -88,7 +91,10 @@ function handleCopy() {
         </div>
         <div class="flex gap-2">
           <button @click="handleConvert" class="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-sm font-medium transition-colors">批量转换</button>
-          <button @click="handleCopy" class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm transition-colors"><Copy :size="14" /></button>
+          <button @click="handleCopy" class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm transition-colors">
+            <span v-if="!copyFeedback"><Copy :size="14" /></span>
+            <span v-else class="text-emerald-400 text-xs">已复制</span>
+          </button>
           <button @click="handleExport" class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm transition-colors"><Download :size="14" /></button>
         </div>
       </div>
