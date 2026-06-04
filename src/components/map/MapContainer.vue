@@ -763,6 +763,18 @@ const showBasemapSwitcher = ref(false)
       <button @click="fitWorld" class="w-9 h-9 bg-gray-800/90 backdrop-blur border border-gray-600 rounded flex items-center justify-center hover:bg-gray-700 transition-colors text-white" title="全局视图">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
       </button>
+      <!-- 分隔线 -->
+      <div class="w-7 mx-auto border-t border-gray-600 my-0.5"></div>
+      <!-- 测量工具 -->
+      <button @click="store.setToolMode(store.toolMode === 'measure-distance' ? 'pan' : 'measure-distance')" class="w-9 h-9 rounded flex items-center justify-center transition-colors text-white" :class="store.toolMode === 'measure-distance' ? 'bg-emerald-600 border border-emerald-500' : 'bg-gray-800/90 backdrop-blur border border-gray-600 hover:bg-gray-700'" title="测距">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h5"/><path d="M17 12h5"/><path d="M7 12a5 5 0 0 1 10 0"/><path d="M2 12v3"/><path d="M22 12v3"/></svg>
+      </button>
+      <button @click="store.setToolMode(store.toolMode === 'measure-area' ? 'pan' : 'measure-area')" class="w-9 h-9 rounded flex items-center justify-center transition-colors text-white" :class="store.toolMode === 'measure-area' ? 'bg-emerald-600 border border-emerald-500' : 'bg-gray-800/90 backdrop-blur border border-gray-600 hover:bg-gray-700'" title="测面">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7 7"/><path d="M3 3v6"/><path d="M3 3h6"/><path d="M21 21l-7-7"/><path d="M21 21v-6"/><path d="M21 21h-6"/><rect x="7" y="7" width="10" height="10" rx="1" opacity="0.3"/></svg>
+      </button>
+      <button @click="store.setToolMode(store.toolMode === 'measure-angle' ? 'pan' : 'measure-angle')" class="w-9 h-9 rounded flex items-center justify-center transition-colors text-white" :class="store.toolMode === 'measure-angle' ? 'bg-emerald-600 border border-emerald-500' : 'bg-gray-800/90 backdrop-blur border border-gray-600 hover:bg-gray-700'" title="测方位角">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2v4"/><path d="M12 8v4"/><path d="M12 12l4 4"/></svg>
+      </button>
     </div>
 
     <!-- 底图切换 -->

@@ -3,7 +3,7 @@ import { useAppStore } from '../../stores/appStore'
 import type { ToolMode } from '../../types'
 import {
   Move, MapPin, PenTool, Pentagon, Square, Circle, Type,
-  Ruler, Triangle, Compass, Search, Crosshair,
+  Search, Crosshair, Compass,
   Layers, Navigation, BarChart3,
 } from 'lucide-vue-next'
 
@@ -18,9 +18,6 @@ interface ToolItem {
 
 const tools: ToolItem[] = [
   { mode: 'pan', label: '漫游', icon: Move, group: '基础' },
-  { mode: 'measure-distance', label: '测距', icon: Ruler, group: '基础' },
-  { mode: 'measure-area', label: '测面', icon: Triangle, group: '基础' },
-  { mode: 'measure-angle', label: '测方位角', icon: Compass, group: '基础' },
   { mode: 'draw-marker', label: '标注点', icon: MapPin, group: '绘制' },
   { mode: 'draw-polyline', label: '画线', icon: PenTool, group: '绘制' },
   { mode: 'draw-polygon', label: '画多边形', icon: Pentagon, group: '绘制' },
