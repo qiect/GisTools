@@ -18,15 +18,15 @@ interface ToolItem {
 
 const tools: ToolItem[] = [
   { mode: 'pan', label: '漫游', icon: Move, group: '基础' },
+  { mode: 'measure-distance', label: '测距', icon: Ruler, group: '基础' },
+  { mode: 'measure-area', label: '测面', icon: Triangle, group: '基础' },
+  { mode: 'measure-angle', label: '测方位角', icon: Compass, group: '基础' },
   { mode: 'draw-marker', label: '标注点', icon: MapPin, group: '绘制' },
   { mode: 'draw-polyline', label: '画线', icon: PenTool, group: '绘制' },
   { mode: 'draw-polygon', label: '画多边形', icon: Pentagon, group: '绘制' },
   { mode: 'draw-rectangle', label: '画矩形', icon: Square, group: '绘制' },
   { mode: 'draw-circle', label: '画圆', icon: Circle, group: '绘制' },
   { mode: 'draw-text', label: '文字标注', icon: Type, group: '绘制' },
-  { mode: 'measure-distance', label: '测距', icon: Ruler, group: '测量' },
-  { mode: 'measure-area', label: '测面', icon: Triangle, group: '测量' },
-  { mode: 'measure-angle', label: '测方位角', icon: Compass, group: '测量' },
 ]
 
 const panelTools: { mode: ToolMode; label: string; icon: any }[] = [
@@ -38,7 +38,7 @@ const panelTools: { mode: ToolMode; label: string; icon: any }[] = [
   { mode: 'layers', label: '图层管理', icon: Layers },
 ]
 
-const groups = ['基础', '绘制', '测量']
+const groups = ['基础', '绘制']
 </script>
 
 <template>

@@ -315,14 +315,17 @@ let clickTimer: ReturnType<typeof setTimeout> | null = null
 let lastAddedLatlng: [number, number] | null = null
 
 function handleDblClick(_e: L.LeafletMouseEvent) {
-  // 双击时移除最后一次单击添加的点（双击的第二次click添加的重复点）
+  // 双击时移除双击两次click添加的重复点（坐标几乎相同）
   const mode = store.toolMode
   const points = mode.startsWith('draw-') ? drawTempPoints : measureTempPoints
-  if (points.length > 0 && lastAddedLatlng) {
+  // 移除末尾连续的重复点（双击的两次click坐标非常接近）
+  while (points.length >= 2) {
     const last = points[points.length - 1]
-    // 如果最后一个点和上次添加的点相同，移除它
-    if (Math.abs(last[0] - lastAddedLatlng[0]) < 0.0001 && Math.abs(last[1] - lastAddedLatlng[1]) < 0.0001) {
+    const prev = points[points.length - 2]
+    if (Math.abs(last[0] - prev[0]) < 0.001 && Math.abs(last[1] - prev[1]) < 0.001) {
       points.pop()
+    } else {
+      break
     }
   }
   lastAddedLatlng = null
