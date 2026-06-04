@@ -1,31 +1,31 @@
 import { useState } from 'react'
-import { useMap } from 'react-leaflet'
+import { useMapInstance } from '../../contexts/MapContext'
 import { useGeocoding } from '../../hooks/useGeocoding'
 import { Search, MapPin, Loader2 } from 'lucide-react'
 
 export function SearchTool() {
   const [query, setQuery] = useState('')
   const { results, loading, search } = useGeocoding()
-  const map = useMap()
+  const map = useMapInstance()
 
   const handleSearch = () => {
     if (query.trim()) search(query.trim())
   }
 
   const handleSelect = (lat: string, lon: string) => {
-    map.setView([parseFloat(lat), parseFloat(lon)], 14)
+    map?.setView([parseFloat(lat), parseFloat(lon)], 14)
   }
 
   const handleCoordSearch = () => {
     const match = query.match(/^(-?\d+\.?\d*)\s*[,，\s]\s*(-?\d+\.?\d*)$/)
     if (match) {
       const [, lat, lng] = match
-      map.setView([parseFloat(lat), parseFloat(lng)], 14)
+      map?.setView([parseFloat(lat), parseFloat(lng)], 14)
     }
   }
 
   return (
-    <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] w-96">
+    <div className="absolute top-3 left-1/2 -translate-x-1/2 w-96">
       <div className="bg-gray-800/95 backdrop-blur border border-gray-600 rounded-lg shadow-xl">
         <div className="flex items-center gap-2 p-2">
           <Search size={16} className="text-gray-400 shrink-0" />
