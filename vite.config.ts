@@ -4,5 +4,5 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
-  base: process.env.GITHUB_ACTIONS ? '/geo-toolkit/' : '/',
+  base: process.env.GITHUB_ACTIONS ? '/GisTools/' : '/',
 })
