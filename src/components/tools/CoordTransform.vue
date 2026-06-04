@@ -29,6 +29,7 @@ const toSystem = ref<ChinaCoordSystem>('GCJ02')
 const fromEpsg = ref('EPSG:4326')
 const toEpsg = ref('EPSG:3857')
 const result = ref<[number, number] | null>(null)
+const copyFeedback = ref(false)
 
 function convertPoint(lng: number, lat: number, from: ChinaCoordSystem, to: ChinaCoordSystem): [number, number] {
   if (from === to) return [lng, lat]
@@ -53,7 +54,11 @@ function handleConvert() {
 }
 
 function copyResult() {
-  if (result.value) navigator.clipboard.writeText(`${result.value[0]}, ${result.value[1]}`)
+  if (result.value) {
+    navigator.clipboard.writeText(`${result.value[0]}, ${result.value[1]}`)
+    copyFeedback.value = true
+    setTimeout(() => { copyFeedback.value = false }, 1500)
+  }
 }
 </script>
 
@@ -111,7 +116,10 @@ function copyResult() {
 
         <div v-if="result" class="flex items-center gap-2 bg-gray-900 rounded px-3 py-2">
           <span class="text-sm font-mono text-emerald-400 flex-1">{{ result[0].toFixed(8) }}, {{ result[1].toFixed(8) }}</span>
-          <button @click="copyResult" class="text-gray-400 hover:text-white"><Copy :size="14" /></button>
+          <button @click="copyResult" class="text-gray-400 hover:text-white">
+            <Copy v-if="!copyFeedback" :size="14" />
+            <span v-else class="text-emerald-400 text-xs">已复制</span>
+          </button>
         </div>
       </div>
     </div>

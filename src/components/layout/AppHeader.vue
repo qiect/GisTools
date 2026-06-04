@@ -17,7 +17,7 @@ const store = useAppStore()
       <div class="flex items-center gap-2">
         <Map :size="22" class="text-emerald-400" />
         <h1 class="text-lg font-bold tracking-wide">
-          Geo<span class="text-emerald-400">Toolkit</span>
+          Gis<span class="text-emerald-400">Tools</span>
         </h1>
       </div>
     </div>
