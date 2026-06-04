@@ -98,8 +98,18 @@ function applyGeoJsonToDrawFeatures(geojson: any) {
           coordinates = coordinates.slice(0, -1)
         }
       }
-      L.polygon(coordinates, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
-      store.addDrawFeature({ id, type: 'polygon', coordinates, properties: { ...properties, name: properties.name || `多边形 ${featureCounter}` }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+      // 识别圆形（sub_type 为 circle 且有 radius 属性）
+      const isCircle = properties.sub_type === 'circle' && properties.radius
+      if (isCircle) {
+        const radius = typeof properties.radius === 'number' ? properties.radius : 1000
+        // 取第一个点作为圆心
+        const center = coordinates[0]
+        L.circle(center, { radius, color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
+        store.addDrawFeature({ id, type: 'circle', coordinates: [center, center], properties: { ...properties, name: properties.name || `圆 ${featureCounter}`, radius }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+      } else {
+        L.polygon(coordinates, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
+        store.addDrawFeature({ id, type: 'polygon', coordinates, properties: { ...properties, name: properties.name || `多边形 ${featureCounter}` }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+      }
     }
   }
 }
