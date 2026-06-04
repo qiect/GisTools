@@ -25,14 +25,14 @@ const mapEl = ref<HTMLDivElement>()
 const mapInstance = ref<L.Map | null>(null)
 
 const basemaps: Record<string, { url: string; attribution: string; label: string }> = {
-  dark: { url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attribution: '&copy; CartoDB', label: '暗色底图' },
   osm: { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '&copy; OpenStreetMap', label: 'OpenStreetMap' },
+  dark: { url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', attribution: '&copy; CartoDB', label: '暗色底图' },
   satellite: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attribution: '&copy; Esri', label: '卫星影像' },
   terrain: { url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', attribution: '&copy; OpenTopoMap', label: '地形图' },
 }
 
 let currentTileLayer: L.TileLayer | null = null
-const activeBasemap = ref('dark') // 改为响应式
+const activeBasemap = ref('osm') // 改为响应式
 
 // 绘制/测量图层
 let drawLayerGroup: L.LayerGroup
@@ -70,7 +70,7 @@ onMounted(() => {
     zoomControl: false,
   })
 
-  currentTileLayer = L.tileLayer(basemaps.dark.url, { attribution: basemaps.dark.attribution }).addTo(map)
+  currentTileLayer = L.tileLayer(basemaps.osm.url, { attribution: basemaps.osm.attribution }).addTo(map)
   drawLayerGroup.addTo(map)
   measureLayerGroup.addTo(map)
   geoLayerGroup.addTo(map)
