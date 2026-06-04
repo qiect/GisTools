@@ -310,21 +310,21 @@ function finishMeasureDistance() {
   setTimeout(() => { drawHint.value = '' }, 3000)
 }
 
-function handleDblClick(_e: L.LeafletMouseEvent) {
-  const mode = store.toolMode
-  const points = mode.startsWith('draw-') ? drawTempPoints : measureTempPoints
+// 延迟点击处理，用于区分单击和双击
+let clickTimer: ReturnType<typeof setTimeout> | null = null
+let pendingClickLatlng: [number, number] | null = null
+const CLICK_DELAY = 250 // ms
 
-  // Remove the point added by the second click of the double-click
-  if (points.length > 0) points.pop()
-  // Also remove the point added by the first click if it's a duplicate of the previous point
-  if (points.length >= 2) {
-    const last = points[points.length - 1]
-    const prev = points[points.length - 2]
-    if (Math.abs(last[0] - prev[0]) < 0.0001 && Math.abs(last[1] - prev[1]) < 0.0001) {
-      points.pop()
-    }
+function handleDblClick(_e: L.LeafletMouseEvent) {
+  // 取消待执行的单击
+  if (clickTimer) {
+    clearTimeout(clickTimer)
+    clickTimer = null
+    pendingClickLatlng = null
   }
 
+  const mode = store.toolMode
+  // 双击完成绘制/测量
   if (mode === 'measure-area' && measureTempPoints.length >= 3) finishMeasureArea()
   else if (mode === 'draw-polygon' && drawTempPoints.length >= 3) finishDrawPolygon()
   else if (mode === 'draw-polyline' && drawTempPoints.length >= 2) finishDrawPolyline()
@@ -336,6 +336,87 @@ function handleMapClick(e: L.LeafletMouseEvent) {
   if (mode === 'pan') return
 
   const latlng: [number, number] = [e.latlng.lat, e.latlng.lng]
+
+  // 需要双击完成的模式：延迟添加点，避免双击时多添加点
+  const dblClickModes = ['draw-polyline', 'draw-polygon', 'measure-distance', 'measure-area']
+  if (dblClickModes.includes(mode)) {
+    if (clickTimer) clearTimeout(clickTimer)
+    pendingClickLatlng = latlng
+    clickTimer = setTimeout(() => {
+      clickTimer = null
+      if (pendingClickLatlng) {
+        addPointToMode(mode, pendingClickLatlng)
+        pendingClickLatlng = null
+      }
+    }, CLICK_DELAY)
+    return
+  }
+
+  // 以下模式不需要双击完成，直接处理
+  processClick(mode, latlng)
+}
+
+// 添加点到当前模式的临时数组并更新预览
+function addPointToMode(mode: string, latlng: [number, number]) {
+  if (mode.startsWith('draw-')) {
+    drawTempPoints.push(latlng)
+  } else {
+    measureTempPoints.push(latlng)
+  }
+
+  // 更新预览
+  const points = mode.startsWith('draw-') ? [...drawTempPoints] : [...measureTempPoints]
+  if (mode === 'draw-polyline' && points.length >= 2) {
+    measureLayerGroup; // noop
+    updateDrawPreview(mode, points)
+    drawHint.value = `已点击 ${drawTempPoints.length} 个点。双击完成绘制，继续点击添加点`
+  } else if (mode === 'draw-polygon') {
+    updateDrawPreview(mode, points)
+    const count = drawTempPoints.length
+    drawHint.value = count < 3
+      ? `已点击 ${count} 个点，至少需要 3 个点。继续点击添加点`
+      : `已点击 ${count} 个点。双击完成绘制，继续点击添加点`
+  } else if (mode === 'measure-distance') {
+    if (points.length >= 2) {
+      measureLayerGroup.clearLayers()
+      const result = calcDistance(points as [number, number][])
+      L.polyline(points, { color: '#f59e0b', weight: 3, dashArray: '8 4' })
+        .bindTooltip(`${result.value.toFixed(2)} ${result.unit}`, { permanent: true })
+        .addTo(measureLayerGroup)
+      store.clearMeasureResults()
+      store.addMeasureResult({ type: 'distance', value: result.value, unit: result.unit, coordinates: [...points] as [number, number][] })
+    }
+    drawHint.value = `已点击 ${measureTempPoints.length} 个点。双击完成测量，继续点击添加点`
+  } else if (mode === 'measure-area') {
+    if (points.length >= 3) {
+      measureLayerGroup.clearLayers()
+      const result = calcArea(points as [number, number][])
+      L.polygon(points, { color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.15, weight: 2, dashArray: '8 4' })
+        .bindTooltip(`${result.value.toFixed(2)} ${result.unit}`, { permanent: true })
+        .addTo(measureLayerGroup)
+      store.clearMeasureResults()
+      store.addMeasureResult({ type: 'area', value: result.value, unit: result.unit, coordinates: [...points] as [number, number][] })
+    }
+    const count = measureTempPoints.length
+    drawHint.value = count < 3
+      ? `已点击 ${count} 个点，至少需要 3 个点。继续点击添加点`
+      : `已点击 ${count} 个点。双击完成测量，继续点击添加点`
+  }
+}
+
+// 更新绘制预览
+function updateDrawPreview(mode: string, points: [number, number][]) {
+  if (!mapInstance.value) return
+  clearPreview()
+  if (mode === 'draw-polyline' && points.length >= 2) {
+    previewLayer = L.polyline(points, { color: '#10b981', weight: 2, dashArray: '4 4', opacity: 0.6 }).addTo(mapInstance.value)
+  } else if (mode === 'draw-polygon' && points.length >= 2) {
+    previewLayer = L.polygon(points, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.1, weight: 2, dashArray: '4 4' }).addTo(mapInstance.value)
+  }
+}
+
+// 不需要双击完成的模式直接处理
+function processClick(mode: string, latlng: [number, number]) {
 
   // ---- 标注点 ----
   if (mode === 'draw-marker') {
@@ -373,24 +454,7 @@ function handleMapClick(e: L.LeafletMouseEvent) {
     return
   }
 
-  // ---- 画线（双击完成）----
-  if (mode === 'draw-polyline') {
-    drawTempPoints.push(latlng)
-    drawHint.value = `已点击 ${drawTempPoints.length} 个点。双击完成绘制，继续点击添加点`
-    return
-  }
-
-  // ---- 画多边形（双击完成）----
-  if (mode === 'draw-polygon') {
-    drawTempPoints.push(latlng)
-    const count = drawTempPoints.length
-    if (count < 3) {
-      drawHint.value = `已点击 ${count} 个点，至少需要 3 个点。继续点击添加点`
-    } else {
-      drawHint.value = `已点击 ${count} 个点。双击完成绘制，继续点击添加点`
-    }
-    return
-  }
+  // ---- 画线、画多边形、测距、测面已移至 addPointToMode（延迟点击处理）----
 
   // ---- 画矩形 ----
   if (mode === 'draw-rectangle') {
@@ -428,45 +492,6 @@ function handleMapClick(e: L.LeafletMouseEvent) {
       setTimeout(() => { drawHint.value = '' }, 2000)
     } else {
       drawHint.value = '已点击圆心，再点击确定半径'
-    }
-    return
-  }
-
-  // ---- 测距（双击完成）----
-  if (mode === 'measure-distance') {
-    measureTempPoints.push(latlng)
-    const points = [...measureTempPoints]
-    if (points.length >= 2) {
-      measureLayerGroup.clearLayers()
-      const result = calcDistance(points)
-      L.polyline(points, { color: '#f59e0b', weight: 3, dashArray: '8 4' })
-        .bindTooltip(`${result.value.toFixed(2)} ${result.unit}`, { permanent: true })
-        .addTo(measureLayerGroup)
-      store.clearMeasureResults()
-      store.addMeasureResult({ type: 'distance', value: result.value, unit: result.unit, coordinates: [...points] })
-    }
-    drawHint.value = `已点击 ${measureTempPoints.length} 个点。双击完成测量，继续点击添加点`
-    return
-  }
-
-  // ---- 测面（双击完成）----
-  if (mode === 'measure-area') {
-    measureTempPoints.push(latlng)
-    const points = [...measureTempPoints]
-    if (points.length >= 3) {
-      measureLayerGroup.clearLayers()
-      const result = calcArea(points)
-      L.polygon(points, { color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.15, weight: 2, dashArray: '8 4' })
-        .bindTooltip(`${result.value.toFixed(2)} ${result.unit}`, { permanent: true })
-        .addTo(measureLayerGroup)
-      store.clearMeasureResults()
-      store.addMeasureResult({ type: 'area', value: result.value, unit: result.unit, coordinates: [...points] })
-    }
-    const count = measureTempPoints.length
-    if (count < 3) {
-      drawHint.value = `已点击 ${count} 个点，至少需要 3 个点。继续点击添加点`
-    } else {
-      drawHint.value = `已点击 ${count} 个点。双击完成测量，继续点击添加点`
     }
     return
   }
@@ -562,6 +587,7 @@ watch(() => store.toolMode, (newMode, oldMode) => {
     drawTempPoints.length = 0
     measureTempPoints.length = 0
     clearPreview()
+    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; pendingClickLatlng = null }
   }
   if (newMode.startsWith('measure')) {
     store.clearMeasureResults()

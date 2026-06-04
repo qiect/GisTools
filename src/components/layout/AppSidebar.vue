@@ -25,11 +25,10 @@ const tools: ToolItem[] = [
   { mode: 'draw-circle', label: '画圆', icon: Circle, group: '绘制' },
   { mode: 'draw-text', label: '文字标注', icon: Type, group: '绘制' },
   { mode: 'measure-distance', label: '测距', icon: Ruler, group: '测量' },
-  { mode: 'measure-area', label: '测面', icon: Pentagon, group: '测量' },
-  { mode: 'measure-angle', label: '测方位角', icon: Triangle, group: '测量' },
+  { mode: 'measure-area', label: '测面', icon: Triangle, group: '测量' },
+  { mode: 'measure-angle', label: '测方位角', icon: Compass, group: '测量' },
 ]
 
-// 移除未实现的 3d-terrain 和 gpx-viewer
 const panelTools: { mode: ToolMode; label: string; icon: any }[] = [
   { mode: 'search', label: '搜索定位', icon: Search },
   { mode: 'import-export', label: '导入导出', icon: Download },
@@ -87,20 +86,18 @@ const groups = ['基础', '绘制', '测量']
 
     <div class="px-2 py-2 border-t border-gray-700 mt-auto">
       <div class="text-xs text-gray-500 uppercase tracking-wider px-2 mb-1">面板</div>
-      <div class="space-y-0.5">
-        <button
-          @click="store.setGeoEditorOpen(!store.geoEditorOpen)"
-          :class="[
-            'w-full flex items-center gap-2.5 px-3 py-1.5 rounded text-sm transition-colors',
-            store.geoEditorOpen
-              ? 'bg-emerald-600/30 text-emerald-400'
-              : 'text-gray-300 hover:bg-gray-700'
-          ]"
-        >
-          <FileJson :size="18" />
-          GeoJSON 编辑器
-        </button>
-      </div>
+      <button
+        @click="store.setGeoEditorOpen(!store.geoEditorOpen)"
+        :class="[
+          'w-full flex items-center gap-2.5 px-3 py-1.5 rounded text-sm transition-colors',
+          store.geoEditorOpen
+            ? 'bg-emerald-600/30 text-emerald-400'
+            : 'text-gray-300 hover:bg-gray-700'
+        ]"
+      >
+        <FileJson :size="18" />
+        JSON 编辑器
+      </button>
     </div>
   </aside>
 </template>
