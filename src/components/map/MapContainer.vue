@@ -361,9 +361,10 @@ function handleDblClick(_e: L.LeafletMouseEvent) {
   const mode = store.toolMode
   const points = mode.startsWith('draw-') ? drawTempPoints : measureTempPoints
 
-  // 双击会先触发两次 click，每次 click 都会添加一个点
-  // 双击的两次 click 坐标非常接近，第二次是纯重复，需要移除
-  // 第一次 click 代表用户想在双击位置完成，保留
+  // 双击会先触发两次 click，每次 click 都会通过 addPointToMode 添加一个点
+  // 双击的两次 click 坐标非常接近：
+  //   - 第1次 click 代表用户想在双击位置完成，保留为有效点
+  //   - 第2次 click 是纯重复，需要移除
   if (points.length >= 1) {
     points.pop() // 移除 dblclick 的第2次 click 添加的重复点
   }
@@ -403,7 +404,6 @@ function addPointToMode(mode: string, latlng: [number, number]) {
   // 更新预览
   const points = mode.startsWith('draw-') ? [...drawTempPoints] : [...measureTempPoints]
   if (mode === 'draw-polyline' && points.length >= 2) {
-    measureLayerGroup; // noop
     updateDrawPreview(mode, points)
     drawHint.value = `已点击 ${drawTempPoints.length} 个点。双击完成绘制，继续点击添加点`
   } else if (mode === 'draw-polygon') {
@@ -424,19 +424,21 @@ function addPointToMode(mode: string, latlng: [number, number]) {
     }
     drawHint.value = `已点击 ${measureTempPoints.length} 个点。双击完成测量，继续点击添加点`
   } else if (mode === 'measure-area') {
-    if (points.length >= 3) {
-      measureLayerGroup.clearLayers()
-      const result = calcArea(points as [number, number][])
-      L.polygon(points, { color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.15, weight: 2, dashArray: '8 4' })
-        .bindTooltip(`${result.value.toFixed(2)} ${result.unit}`, { permanent: true })
-        .addTo(measureLayerGroup)
-      store.clearMeasureResults()
-      store.addMeasureResult({ type: 'area', value: result.value, unit: result.unit, coordinates: [...points] as [number, number][] })
-    }
+    // 与 draw-polygon 一样使用 previewLayer 做虚线预览
+    updateMeasurePreview(points)
     const count = measureTempPoints.length
     drawHint.value = count < 3
       ? `已点击 ${count} 个点，至少需要 3 个点。继续点击添加点`
       : `已点击 ${count} 个点。双击完成测量，继续点击添加点`
+  }
+}
+
+// 更新测量预览（虚线多边形）
+function updateMeasurePreview(points: [number, number][]) {
+  if (!mapInstance.value) return
+  clearPreview()
+  if (points.length >= 2) {
+    previewLayer = L.polygon(points, { color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.1, weight: 2, dashArray: '4 4' }).addTo(mapInstance.value)
   }
 }
 
