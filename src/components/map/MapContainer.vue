@@ -338,22 +338,27 @@ function updatePreview(mode: string) {
   }
 }
 
-// 双击完成
-function handleDblClickFinish(_e: L.LeafletMouseEvent) {
+// 双击完成：将双击位置作为最后一个点加入，然后闭合
+function handleDblClickFinish(e: L.LeafletMouseEvent) {
   const mode = store.toolMode
   if (!isPolygonMode(mode)) return
 
-  // 取消延迟的 click 添加，双击位置不添加新点
+  // 取消延迟的 click（双击的两次 click 不应单独添加点）
   if (clickTimer) {
     clearTimeout(clickTimer)
     clickTimer = null
     pendingClickLatlng = null
   }
 
+  // 双击位置作为最后一个点加入
+  const dblClickLatlng: [number, number] = [e.latlng.lat, e.latlng.lng]
   const points = getTempPoints(mode)
+  points.push(dblClickLatlng)
+
   const min = getMinPoints(mode)
   if (points.length < min) {
     drawHint.value = `至少需要 ${min} 个点才能完成`
+    points.pop()
     return
   }
 
