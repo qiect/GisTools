@@ -26,7 +26,7 @@ const store = useAppStore()
       <button
         @click="store.setGeoEditorOpen(!store.geoEditorOpen)"
         class="p-1.5 rounded hover:bg-gray-700 transition-colors"
-        title="JSON 编辑器"
+        title="GeoJSON 编辑器"
       >
         <PanelRightClose v-if="store.geoEditorOpen" :size="18" />
         <PanelRightOpen v-else :size="18" />

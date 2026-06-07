@@ -44,8 +44,6 @@ export type ToolMode =
   | 'draw-rectangle'
   | 'draw-circle'
   | 'draw-text'
-  | 'measure-distance'
-  | 'measure-area'
   | 'measure-angle'
   | 'search'
   | 'import-export'
