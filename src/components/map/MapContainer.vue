@@ -315,9 +315,19 @@ function addPointAndPreview(mode: string, latlng: [number, number]) {
   updatePreview(mode)
   const count = points.length
   const min = getMinPoints(mode)
-  drawHint.value = count < min
-    ? `已点击 ${count} 个点，至少需要 ${min} 个点。继续点击添加点`
-    : `已点击 ${count} 个点。双击完成${mode.startsWith('measure') ? '测量' : '绘制'}，继续点击添加点`
+
+  // 测量模式下实时显示测量值
+  if (mode === 'measure-area' && count >= 3) {
+    const result = calcArea(points as [number, number][])
+    drawHint.value = `面积: ${result.value.toFixed(2)} ${result.unit}。双击完成测量，继续点击添加点`
+  } else if (mode === 'measure-distance' && count >= 2) {
+    const result = calcDistance(points as [number, number][])
+    drawHint.value = `距离: ${result.value.toFixed(2)} ${result.unit}。双击完成测量，继续点击添加点`
+  } else {
+    drawHint.value = count < min
+      ? `已点击 ${count} 个点，至少需要 ${min} 个点。继续点击添加点`
+      : `已点击 ${count} 个点。双击完成${mode.startsWith('measure') ? '测量' : '绘制'}，继续点击添加点`
+  }
 }
 
 // 统一更新预览
@@ -612,6 +622,15 @@ function handleMouseMove(e: L.LeafletMouseEvent) {
         previewLayer = L.polyline(allPoints, { color, weight: 2, dashArray: '4 4', opacity: 0.6 }).addTo(mapInstance.value)
       } else {
         previewLayer = L.polygon(allPoints, { color, fillColor: color, fillOpacity, weight: 2, dashArray: '4 4' }).addTo(mapInstance.value)
+      }
+
+      // 测量模式下鼠标移动时实时更新测量值
+      if (mode === 'measure-area' && allPoints.length >= 3) {
+        const result = calcArea(allPoints as [number, number][])
+        drawHint.value = `面积: ${result.value.toFixed(2)} ${result.unit}。双击完成测量，继续点击添加点`
+      } else if (mode === 'measure-distance' && allPoints.length >= 2) {
+        const result = calcDistance(allPoints as [number, number][])
+        drawHint.value = `距离: ${result.value.toFixed(2)} ${result.unit}。双击完成测量，继续点击添加点`
       }
     }
     return
