@@ -88,6 +88,10 @@ export const useAppStore = defineStore('app', () => {
   function removeDrawFeature(id: string) {
     drawFeatures.value = drawFeatures.value.filter((f) => f.id !== id)
   }
+  function clearDrawFeatures() {
+    drawFeatures.value = []
+    selectedFeature.value = null
+  }
   function addMeasureResult(result: MeasureResult) {
     measureResults.value.push(result)
   }
@@ -116,7 +120,7 @@ export const useAppStore = defineStore('app', () => {
     sidebarOpen, propertyPanelOpen, geoEditorOpen, selectedFeature,
     pendingGeoJsonToApply,
     setToolMode, addLayer, removeLayer, toggleLayerVisibility, updateLayerOpacity,
-    setActiveLayerId, addDrawFeature, removeDrawFeature, addMeasureResult,
+    setActiveLayerId, addDrawFeature, removeDrawFeature, clearDrawFeatures, addMeasureResult,
     clearMeasureResults, setSidebarOpen, setPropertyPanelOpen, setGeoEditorOpen,
     setSelectedFeature, requestApplyGeoJson,
   }

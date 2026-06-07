@@ -2,7 +2,7 @@
 import { ref, watch, computed, nextTick } from 'vue'
 import { useAppStore, getAllDrawFeaturesGeoJson } from '../../stores/appStore'
 import { parseKML, parseCSV, exportGeoJSON, downloadFile } from '../../utils/dataIO'
-import { FileJson, RotateCcw, Copy, Check, Pencil, Save, XCircle, Upload, Download } from 'lucide-vue-next'
+import { FileJson, RotateCcw, Copy, Check, Pencil, Save, XCircle, Upload, Download, Trash2 } from 'lucide-vue-next'
 import JsonTreeNode from './JsonTreeNode.vue'
 
 const store = useAppStore()
@@ -111,6 +111,12 @@ function handleExport() {
   }
 }
 
+// 清空所有绘制要素
+function clearAll() {
+  store.clearDrawFeatures()
+  editorText.value = JSON.stringify({ type: 'FeatureCollection', features: [] }, null, 2)
+}
+
 // 监听绘制要素变化
 watch(() => store.drawFeatures.length, () => {
   nextTick(() => {
@@ -186,7 +192,7 @@ const treeData = computed(() => {
     <div class="flex items-center justify-between px-3 py-1.5 border-b border-gray-700 shrink-0 min-h-[32px]">
       <div class="flex items-center gap-1.5">
         <FileJson :size="13" class="text-emerald-400" />
-        <span class="text-[11px] font-medium text-gray-200">JSON 编辑器</span>
+        <span class="text-[11px] font-medium text-gray-200">GeoJSON 编辑器</span>
         <span v-if="importFeedback" class="text-[10px] text-emerald-400">已导入</span>
       </div>
       <div class="flex items-center gap-0.5">
@@ -209,6 +215,10 @@ const treeData = computed(() => {
           <!-- 导出 -->
           <button @click="handleExport" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="导出 GeoJSON">
             <Download :size="12" />
+          </button>
+          <!-- 清空 -->
+          <button @click="clearAll" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-red-400" title="清空所有要素">
+            <Trash2 :size="12" />
           </button>
         </template>
         <template v-else>
