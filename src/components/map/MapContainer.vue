@@ -86,9 +86,11 @@ function applyGeoJsonToDrawFeatures(geojson: any) {
         store.addDrawFeature(feat)
       } else {
         const feat = { id, type: 'marker' as const, coordinates: latlng, properties: { ...properties, name: properties.name || `标注点 ${featureCounter}` }, style: {} }
-        const marker = L.marker(latlng).addTo(drawLayerGroup)
-        marker.bindTooltip(properties.name || `标注点 ${featureCounter}`, { permanent: false }).openTooltip()
-        marker.on('click', (ev: L.LeafletEvent) => {
+        const marker = L.circleMarker(latlng, MARKER_STYLE).addTo(drawLayerGroup)
+        marker.bindTooltip(properties.name || `标注点 ${featureCounter}`, { permanent: false, direction: 'top', offset: [0, -8] })
+        // 点击热区
+        const hitArea = L.circleMarker(latlng, MARKER_HIT_STYLE).addTo(drawLayerGroup)
+        hitArea.on('click', (ev: L.LeafletEvent) => {
           L.DomEvent.stopPropagation(ev)
           store.setSelectedFeature(feat)
           store.setPropertyPanelOpen(true)
@@ -98,8 +100,8 @@ function applyGeoJsonToDrawFeatures(geojson: any) {
     } else if (geometry.type === 'LineString') {
       const coordinates: [number, number][] = (geometry.coordinates as [number, number][]).map((c: [number, number]) => [c[1], c[0]] as [number, number])
       const featProps = { ...properties, name: properties.name || `线 ${featureCounter}` }
-      const feat = { id, type: 'polyline' as const, coordinates, properties: featProps, style: { color: '#10b981', weight: 3 } }
-      const layer = L.polyline(coordinates, { color: '#10b981', weight: 3 }).addTo(drawLayerGroup)
+      const feat = { id, type: 'polyline' as const, coordinates, properties: featProps, style: LINE_STYLE }
+      const layer = L.polyline(coordinates, LINE_STYLE).addTo(drawLayerGroup)
       bindShapeEvents(layer, feat)
       store.addDrawFeature(feat)
     } else if (geometry.type === 'Polygon') {
@@ -280,6 +282,15 @@ function fitWorld() { mapInstance.value?.fitWorld() }
 // 绘制逻辑
 let featureCounter = 0
 
+// 标注点样式：绿色圆点 + 白色边框，比默认图钉更清晰
+const MARKER_STYLE = { radius: 7, color: '#fff', weight: 2, fillColor: '#10b981', fillOpacity: 0.9 }
+// 标注点点击热区（更大的透明圆）
+const MARKER_HIT_STYLE = { radius: 14, color: 'transparent', weight: 0, fillColor: 'transparent', fillOpacity: 0 }
+
+// 线样式：加粗 + 透明宽命中区域
+const LINE_STYLE = { color: '#10b981', weight: 4 }
+const LINE_HIT_STYLE = { color: 'transparent', weight: 14 }
+
 // 给图形图层绑定 click + contextmenu 事件（右键时自动选中，使右键菜单可显示测量选项）
 function bindShapeEvents(layer: L.Layer, feature: DrawFeature) {
   layer.on('click', (ev: L.LeafletEvent) => {
@@ -298,6 +309,26 @@ function bindShapeEvents(layer: L.Layer, feature: DrawFeature) {
       visible: true,
     }
   })
+
+  // 为线添加透明宽命中区域，方便选中
+  if (feature.type === 'polyline' && drawLayerGroup) {
+    const hitLayer = L.polyline(feature.coordinates as [number, number][], LINE_HIT_STYLE).addTo(drawLayerGroup)
+    hitLayer.on('click', (ev: L.LeafletEvent) => {
+      L.DomEvent.stopPropagation(ev)
+      store.setSelectedFeature(feature)
+      store.setPropertyPanelOpen(true)
+    })
+    hitLayer.on('contextmenu', (ev: L.LeafletMouseEvent) => {
+      L.DomEvent.stopPropagation(ev)
+      store.setSelectedFeature(feature)
+      contextMenu.value = {
+        x: ev.containerPoint.x,
+        y: ev.containerPoint.y,
+        latlng: [ev.latlng.lat, ev.latlng.lng],
+        visible: true,
+      }
+    })
+  }
 }
 
 // ---- 多边形/折线 统一绘制引擎 ----
@@ -405,8 +436,8 @@ function finishDrawPolyline() {
   if (drawTempPoints.length < 2) return
   const points = [...drawTempPoints]
   const id = `draw-${++featureCounter}`
-  const feat = { id, type: 'polyline' as const, coordinates: points, properties: { name: `线 ${featureCounter}` }, style: { color: '#10b981', weight: 3 } }
-  const layer = L.polyline(points, { color: '#10b981', weight: 3 }).addTo(drawLayerGroup)
+  const feat = { id, type: 'polyline' as const, coordinates: points, properties: { name: `线 ${featureCounter}` }, style: LINE_STYLE }
+  const layer = L.polyline(points, LINE_STYLE).addTo(drawLayerGroup)
   bindShapeEvents(layer, feat)
   store.addDrawFeature(feat)
   drawTempPoints.length = 0
@@ -438,20 +469,26 @@ function processClick(mode: string, latlng: [number, number]) {
   // ---- 标注点 ----
   if (mode === 'draw-marker') {
     const id = `draw-${++featureCounter}`
-    const marker = L.marker(latlng).addTo(drawLayerGroup)
-    marker.bindTooltip(`标注点 ${featureCounter}`, { permanent: false }).openTooltip()
-    marker.on('click', (ev: L.LeafletEvent) => {
+    const feat = { id, type: 'marker' as const, coordinates: latlng, properties: { name: `标注点 ${featureCounter}` }, style: {} }
+    const marker = L.circleMarker(latlng, MARKER_STYLE).addTo(drawLayerGroup)
+    marker.bindTooltip(`标注点 ${featureCounter}`, { permanent: false, direction: 'top', offset: [0, -8] })
+    const hitArea = L.circleMarker(latlng, MARKER_HIT_STYLE).addTo(drawLayerGroup)
+    hitArea.on('click', (ev: L.LeafletEvent) => {
       L.DomEvent.stopPropagation(ev)
-      store.setSelectedFeature({
-        id, type: 'marker', coordinates: latlng,
-        properties: { name: `标注点 ${featureCounter}` }, style: {},
-      })
+      store.setSelectedFeature(feat)
       store.setPropertyPanelOpen(true)
     })
-    store.addDrawFeature({
-      id, type: 'marker', coordinates: latlng,
-      properties: { name: `标注点 ${featureCounter}` }, style: {},
+    hitArea.on('contextmenu', (ev: L.LeafletMouseEvent) => {
+      L.DomEvent.stopPropagation(ev)
+      store.setSelectedFeature(feat)
+      contextMenu.value = {
+        x: ev.containerPoint.x,
+        y: ev.containerPoint.y,
+        latlng: [ev.latlng.lat, ev.latlng.lng],
+        visible: true,
+      }
     })
+    store.addDrawFeature(feat)
     drawHint.value = '标注点已添加'
     setTimeout(() => { drawHint.value = '' }, 2000)
     return
@@ -553,16 +590,15 @@ function confirmTextInput() {
   const text = textInput.value.trim()
   const latlng = pendingTextLatlng.value
   const id = `draw-${++featureCounter}`
-  const marker = L.marker(latlng).addTo(drawLayerGroup)
-  marker.bindTooltip(text, { permanent: true, direction: 'top', offset: [0, -20] }).openTooltip()
-  marker.on('click', (ev: L.LeafletEvent) => {
+  const feat = { id, type: 'text' as const, coordinates: latlng, properties: { text, name: text }, style: {} }
+  const marker = L.circleMarker(latlng, MARKER_STYLE).addTo(drawLayerGroup)
+  marker.bindTooltip(text, { permanent: true, direction: 'top', offset: [0, -10] })
+  const hitArea = L.circleMarker(latlng, MARKER_HIT_STYLE).addTo(drawLayerGroup)
+  hitArea.on('click', (ev: L.LeafletEvent) => {
     L.DomEvent.stopPropagation(ev)
-    store.setSelectedFeature({ id, type: 'text', coordinates: latlng, properties: { text, name: text }, style: {} })
+    store.setSelectedFeature(feat)
   })
-  store.addDrawFeature({
-    id, type: 'text', coordinates: latlng,
-    properties: { text, name: text }, style: {},
-  })
+  store.addDrawFeature(feat)
   textInputVisible.value = false
   pendingTextLatlng.value = null
 }
@@ -763,6 +799,14 @@ watch(() => store.selectedFeature, (feature) => {
   }
 })
 
+// 监听 drawFeatures 清空，同步清除地图图层
+watch(() => store.drawFeatures.length, (len) => {
+  if (len === 0 && drawLayerGroup) {
+    drawLayerGroup.clearLayers()
+    clearHighlight()
+  }
+})
+
 // 监听图层变化 - 重新渲染 GeoJSON 图层
 watch(() => [...store.layers], (newLayers) => {
   if (!geoLayerGroup) return
@@ -837,20 +881,16 @@ function contextAddMarker() {
   const latlng = contextMenu.value.latlng
   contextMenu.value.visible = false
   const id = `draw-${++featureCounter}`
-  const marker = L.marker(latlng).addTo(drawLayerGroup)
-  marker.bindTooltip(`标注点 ${featureCounter}`, { permanent: false }).openTooltip()
-  marker.on('click', (ev: L.LeafletEvent) => {
+  const feat = { id, type: 'marker' as const, coordinates: latlng, properties: { name: `标注点 ${featureCounter}` }, style: {} }
+  const marker = L.circleMarker(latlng, MARKER_STYLE).addTo(drawLayerGroup)
+  marker.bindTooltip(`标注点 ${featureCounter}`, { permanent: false, direction: 'top', offset: [0, -8] })
+  const hitArea = L.circleMarker(latlng, MARKER_HIT_STYLE).addTo(drawLayerGroup)
+  hitArea.on('click', (ev: L.LeafletEvent) => {
     L.DomEvent.stopPropagation(ev)
-    store.setSelectedFeature({
-      id, type: 'marker', coordinates: latlng,
-      properties: { name: `标注点 ${featureCounter}` }, style: {},
-    })
+    store.setSelectedFeature(feat)
     store.setPropertyPanelOpen(true)
   })
-  store.addDrawFeature({
-    id, type: 'marker', coordinates: latlng,
-    properties: { name: `标注点 ${featureCounter}` }, style: {},
-  })
+  store.addDrawFeature(feat)
   showToast('标注点已添加')
 }
 
