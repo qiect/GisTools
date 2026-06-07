@@ -194,6 +194,12 @@ onMounted(() => {
   // 禁用默认双击缩放，以便双击用于完成绘制
   map.doubleClickZoom.disable()
 
+  // 创建高亮专用 pane，确保不拦截任何鼠标事件
+  map.createPane('highlightPane')
+  map.getPane('highlightPane')!.style.pointerEvents = 'none'
+  // 高亮 pane 需要在 overlay pane 之上
+  map.getPane('highlightPane')!.style.zIndex = '450'
+
   // 双击完成绘制
   map.on('dblclick', (e: L.LeafletMouseEvent) => {
     e.originalEvent.preventDefault()
@@ -623,7 +629,7 @@ function highlightFeature(feature: DrawFeature) {
   if (!mapInstance.value) return
   clearHighlight()
   const coords = feature.coordinates as [number, number][]
-  const highlightStyle = { color: '#f59e0b', weight: 4, opacity: 0.9, interactive: false }
+  const highlightStyle = { color: '#f59e0b', weight: 4, opacity: 0.9, pane: 'highlightPane' }
 
   if (feature.type === 'polyline') {
     highlightLayer = L.polyline(coords, { ...highlightStyle, dashArray: '8 4' }).addTo(mapInstance.value)
