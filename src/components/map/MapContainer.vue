@@ -46,6 +46,9 @@ let geoLayerGroup: L.LayerGroup
 // 实时预览图层
 let previewLayer: L.Layer | null = null
 
+// 选中要素高亮图层
+let highlightLayer: L.Layer | null = null
+
 // 右键菜单
 const contextMenu = ref<{ x: number; y: number; latlng: [number, number]; visible: boolean }>({ x: 0, y: 0, latlng: [0, 0], visible: false })
 
@@ -163,8 +166,6 @@ function finishCurrent() {
   const mode = store.toolMode
   if (mode === 'draw-polygon') finishDrawPolygon()
   else if (mode === 'draw-polyline') finishDrawPolyline()
-  else if (mode === 'measure-area') finishMeasureArea()
-  else if (mode === 'measure-distance') finishMeasureDistance()
 }
 
 // 绘制提示信息
@@ -196,7 +197,7 @@ onMounted(() => {
   // 禁用默认双击缩放，以便双击用于完成绘制
   map.doubleClickZoom.disable()
 
-  // 双击完成绘制/测量
+  // 双击完成绘制
   map.on('dblclick', (e: L.LeafletMouseEvent) => {
     e.originalEvent.preventDefault()
     handleDblClickFinish(e)
@@ -276,25 +277,25 @@ function fitWorld() { mapInstance.value?.fitWorld() }
 // 绘制逻辑
 let featureCounter = 0
 
-// ---- 多边形/面积 统一绘制引擎 ----
+// ---- 多边形/折线 统一绘制引擎 ----
 // 用延迟点击判断替代 dblclick pop 补偿，彻底解决双击闭合问题
 const DBLCLICK_THRESHOLD = 250 // ms
 let clickTimer: ReturnType<typeof setTimeout> | null = null
 let pendingClickLatlng: [number, number] | null = null
 
 // 需要双击完成的模式
-const POLYGON_MODES = new Set(['draw-polygon', 'draw-polyline', 'measure-distance', 'measure-area'])
+const POLYGON_MODES = new Set(['draw-polygon', 'draw-polyline'])
 
-function isPolygonMode(mode: string): mode is 'draw-polygon' | 'draw-polyline' | 'measure-distance' | 'measure-area' {
+function isPolygonMode(mode: string): mode is 'draw-polygon' | 'draw-polyline' {
   return POLYGON_MODES.has(mode)
 }
 
 function getTempPoints(mode: string): [number, number][] {
-  return mode.startsWith('draw-') ? drawTempPoints : measureTempPoints
+  return drawTempPoints
 }
 
 function getMinPoints(mode: string): number {
-  return (mode === 'draw-polygon' || mode === 'measure-area') ? 3 : 2
+  return mode === 'draw-polygon' ? 3 : 2
 }
 
 // 延迟处理 click：若在阈值内收到 dblclick 则取消添加点并完成，否则正常添加
@@ -315,19 +316,9 @@ function addPointAndPreview(mode: string, latlng: [number, number]) {
   updatePreview(mode)
   const count = points.length
   const min = getMinPoints(mode)
-
-  // 测量模式下实时显示测量值
-  if (mode === 'measure-area' && count >= 3) {
-    const result = calcArea(points as [number, number][])
-    drawHint.value = `面积: ${result.value.toFixed(2)} ${result.unit}。双击完成测量，继续点击添加点`
-  } else if (mode === 'measure-distance' && count >= 2) {
-    const result = calcDistance(points as [number, number][])
-    drawHint.value = `距离: ${result.value.toFixed(2)} ${result.unit}。双击完成测量，继续点击添加点`
-  } else {
-    drawHint.value = count < min
-      ? `已点击 ${count} 个点，至少需要 ${min} 个点。继续点击添加点`
-      : `已点击 ${count} 个点。双击完成${mode.startsWith('measure') ? '测量' : '绘制'}，继续点击添加点`
-  }
+  drawHint.value = count < min
+    ? `已点击 ${count} 个点，至少需要 ${min} 个点。继续点击添加点`
+    : `已点击 ${count} 个点。双击完成绘制，继续点击添加点`
 }
 
 // 统一更新预览
@@ -337,14 +328,10 @@ function updatePreview(mode: string) {
   const points = [...getTempPoints(mode)]
   if (points.length < 2) return
 
-  const isDraw = mode.startsWith('draw-')
-  const color = isDraw ? '#10b981' : '#f59e0b'
-  const fillOpacity = isDraw ? 0.1 : 0.08
-
-  if (mode === 'draw-polyline' || mode === 'measure-distance') {
-    previewLayer = L.polyline(points, { color, weight: 2, dashArray: '4 4', opacity: 0.6 }).addTo(mapInstance.value)
+  if (mode === 'draw-polyline') {
+    previewLayer = L.polyline(points, { color: '#10b981', weight: 2, dashArray: '4 4', opacity: 0.6 }).addTo(mapInstance.value)
   } else {
-    previewLayer = L.polygon(points, { color, fillColor: color, fillOpacity, weight: 2, dashArray: '4 4' }).addTo(mapInstance.value)
+    previewLayer = L.polygon(points, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.1, weight: 2, dashArray: '4 4' }).addTo(mapInstance.value)
   }
 }
 
@@ -374,8 +361,6 @@ function handleDblClickFinish(e: L.LeafletMouseEvent) {
 
   if (mode === 'draw-polygon') finishDrawPolygon()
   else if (mode === 'draw-polyline') finishDrawPolyline()
-  else if (mode === 'measure-area') finishMeasureArea()
-  else if (mode === 'measure-distance') finishMeasureDistance()
 }
 
 // ---- 完成绘制 ----
@@ -409,38 +394,6 @@ function finishDrawPolyline() {
   clearPreview()
   drawHint.value = '线段已绘制'
   setTimeout(() => { drawHint.value = '' }, 2000)
-}
-
-function finishMeasureArea() {
-  if (measureTempPoints.length < 3) return
-  const points = [...measureTempPoints]
-  measureLayerGroup.clearLayers()
-  const result = calcArea(points)
-  L.polygon(points, { color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.15, weight: 2, dashArray: '8 4' })
-    .bindTooltip(`${result.value.toFixed(2)} ${result.unit}`, { permanent: true })
-    .addTo(measureLayerGroup)
-  store.clearMeasureResults()
-  store.addMeasureResult({ type: 'area', value: result.value, unit: result.unit, coordinates: [...points] })
-  measureTempPoints.length = 0
-  clearPreview()
-  drawHint.value = `面积: ${result.value.toFixed(2)} ${result.unit}`
-  setTimeout(() => { drawHint.value = '' }, 3000)
-}
-
-function finishMeasureDistance() {
-  if (measureTempPoints.length < 2) return
-  const points = [...measureTempPoints]
-  measureLayerGroup.clearLayers()
-  const result = calcDistance(points)
-  L.polyline(points, { color: '#f59e0b', weight: 3, dashArray: '8 4' })
-    .bindTooltip(`${result.value.toFixed(2)} ${result.unit}`, { permanent: true })
-    .addTo(measureLayerGroup)
-  store.clearMeasureResults()
-  store.addMeasureResult({ type: 'distance', value: result.value, unit: result.unit, coordinates: [...points] })
-  measureTempPoints.length = 0
-  clearPreview()
-  drawHint.value = `距离: ${result.value.toFixed(2)} ${result.unit}`
-  setTimeout(() => { drawHint.value = '' }, 3000)
 }
 
 // 地图点击事件
@@ -499,7 +452,6 @@ function processClick(mode: string, latlng: [number, number]) {
     if (drawTempPoints.length >= 2) {
       const id = `draw-${++featureCounter}`
       const bounds = L.latLngBounds(drawTempPoints[0], drawTempPoints[1])
-      // 展开为4个角点，确保 GeoJSON Polygon 坐标有效
       const sw = bounds.getSouthWest()
       const ne = bounds.getNorthEast()
       const nw = bounds.getNorthWest()
@@ -553,7 +505,6 @@ function processClick(mode: string, latlng: [number, number]) {
 
     if (points.length === 1) {
       drawHint.value = '已选择起点，请点击终点'
-      // 添加起点标记
       measureLayerGroup.clearLayers()
       L.circleMarker(points[0], { radius: 5, color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 1, weight: 2 }).addTo(measureLayerGroup)
     }
@@ -562,7 +513,6 @@ function processClick(mode: string, latlng: [number, number]) {
       measureLayerGroup.clearLayers()
       const bearing = calcBearing(points[0], points[1])
       const angle = bearing < 0 ? bearing + 360 : bearing
-      // 绘制起点、终点和连线
       L.circleMarker(points[0], { radius: 5, color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 1, weight: 2 }).addTo(measureLayerGroup)
       L.circleMarker(points[1], { radius: 5, color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 1, weight: 2 }).addTo(measureLayerGroup)
       L.polyline(points, { color: '#f59e0b', weight: 3, dashArray: '8 4' })
@@ -608,29 +558,17 @@ function handleMouseMove(e: L.LeafletMouseEvent) {
   if (!mapInstance.value) return
   const latlng: [number, number] = [e.latlng.lat, e.latlng.lng]
 
-  // 多边形/折线/测距/测面：使用统一预览 + 鼠标跟随点
+  // 多边形/折线：使用统一预览 + 鼠标跟随点
   if (isPolygonMode(mode)) {
     const points = getTempPoints(mode)
     if (points.length > 0) {
       clearPreview()
       const allPoints = [...points, latlng]
-      const isDraw = mode.startsWith('draw-')
-      const color = isDraw ? '#10b981' : '#f59e0b'
-      const fillOpacity = isDraw ? 0.1 : 0.08
 
-      if (mode === 'draw-polyline' || mode === 'measure-distance') {
-        previewLayer = L.polyline(allPoints, { color, weight: 2, dashArray: '4 4', opacity: 0.6 }).addTo(mapInstance.value)
+      if (mode === 'draw-polyline') {
+        previewLayer = L.polyline(allPoints, { color: '#10b981', weight: 2, dashArray: '4 4', opacity: 0.6 }).addTo(mapInstance.value)
       } else {
-        previewLayer = L.polygon(allPoints, { color, fillColor: color, fillOpacity, weight: 2, dashArray: '4 4' }).addTo(mapInstance.value)
-      }
-
-      // 测量模式下鼠标移动时实时更新测量值
-      if (mode === 'measure-area' && allPoints.length >= 3) {
-        const result = calcArea(allPoints as [number, number][])
-        drawHint.value = `面积: ${result.value.toFixed(2)} ${result.unit}。双击完成测量，继续点击添加点`
-      } else if (mode === 'measure-distance' && allPoints.length >= 2) {
-        const result = calcDistance(allPoints as [number, number][])
-        drawHint.value = `距离: ${result.value.toFixed(2)} ${result.unit}。双击完成测量，继续点击添加点`
+        previewLayer = L.polygon(allPoints, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.1, weight: 2, dashArray: '4 4' }).addTo(mapInstance.value)
       }
     }
     return
@@ -664,6 +602,103 @@ function clearPreview() {
   }
 }
 
+function clearHighlight() {
+  if (highlightLayer && mapInstance.value) {
+    mapInstance.value.removeLayer(highlightLayer)
+    highlightLayer = null
+  }
+}
+
+// 高亮选中要素
+function highlightFeature(feature: DrawFeature) {
+  if (!mapInstance.value) return
+  clearHighlight()
+  const coords = feature.coordinates as [number, number][]
+  const highlightStyle = { color: '#f59e0b', weight: 4, opacity: 0.9 }
+
+  if (feature.type === 'polyline') {
+    highlightLayer = L.polyline(coords, { ...highlightStyle, dashArray: '8 4' }).addTo(mapInstance.value)
+  } else if (feature.type === 'polygon' || feature.type === 'rectangle') {
+    highlightLayer = L.polygon(coords, { ...highlightStyle, fillColor: '#f59e0b', fillOpacity: 0.15, dashArray: '8 4' }).addTo(mapInstance.value)
+  } else if (feature.type === 'circle') {
+    const radius = Number(feature.properties?.radius ?? 1000)
+    highlightLayer = L.circle(coords[0], { radius, ...highlightStyle, fillColor: '#f59e0b', fillOpacity: 0.15, dashArray: '8 4' }).addTo(mapInstance.value)
+  }
+}
+
+// ---- 右键菜单：测量选中图形 ----
+// 判断当前选中要素是否可测量
+const canMeasureDistance = computed(() => {
+  const f = store.selectedFeature
+  return f && (f.type === 'polyline' || f.type === 'polygon' || f.type === 'rectangle' || f.type === 'circle')
+})
+
+const canMeasureArea = computed(() => {
+  const f = store.selectedFeature
+  return f && (f.type === 'polygon' || f.type === 'rectangle' || f.type === 'circle')
+})
+
+function contextMeasureDistance() {
+  const feature = store.selectedFeature
+  if (!feature) return
+  contextMenu.value.visible = false
+
+  highlightFeature(feature)
+  const coords = feature.coordinates as [number, number][]
+
+  if (feature.type === 'polyline') {
+    const result = calcDistance(coords)
+    store.clearMeasureResults()
+    store.addMeasureResult({ type: 'distance', value: result.value, unit: result.unit, coordinates: [...coords] })
+    showToast(`距离: ${result.value.toFixed(2)} ${result.unit}`)
+  } else if (feature.type === 'polygon' || feature.type === 'rectangle') {
+    // 闭合多边形周长
+    const closedCoords = [...coords, coords[0]]
+    const result = calcDistance(closedCoords)
+    store.clearMeasureResults()
+    store.addMeasureResult({ type: 'distance', value: result.value, unit: result.unit, coordinates: closedCoords })
+    showToast(`周长: ${result.value.toFixed(2)} ${result.unit}`)
+  } else if (feature.type === 'circle') {
+    const radius = Number(feature.properties?.radius ?? 1000)
+    const circumference = 2 * Math.PI * radius
+    const result = circumference < 1000
+      ? { value: circumference, unit: 'm' }
+      : { value: circumference / 1000, unit: 'km' }
+    store.clearMeasureResults()
+    store.addMeasureResult({ type: 'distance', value: result.value, unit: result.unit, coordinates: [...coords] })
+    showToast(`周长: ${result.value.toFixed(2)} ${result.unit}`)
+  }
+
+  store.setPropertyPanelOpen(true)
+}
+
+function contextMeasureArea() {
+  const feature = store.selectedFeature
+  if (!feature) return
+  contextMenu.value.visible = false
+
+  highlightFeature(feature)
+  const coords = feature.coordinates as [number, number][]
+
+  if (feature.type === 'polygon' || feature.type === 'rectangle') {
+    const result = calcArea(coords)
+    store.clearMeasureResults()
+    store.addMeasureResult({ type: 'area', value: result.value, unit: result.unit, coordinates: [...coords] })
+    showToast(`面积: ${result.value.toFixed(2)} ${result.unit}`)
+  } else if (feature.type === 'circle') {
+    const radius = Number(feature.properties?.radius ?? 1000)
+    const areaVal = Math.PI * radius * radius
+    const result = areaVal < 1e6
+      ? { value: areaVal, unit: 'm²' }
+      : { value: areaVal / 1e6, unit: 'km²' }
+    store.clearMeasureResults()
+    store.addMeasureResult({ type: 'area', value: result.value, unit: result.unit, coordinates: [...coords] })
+    showToast(`面积: ${result.value.toFixed(2)} ${result.unit}`)
+  }
+
+  store.setPropertyPanelOpen(true)
+}
+
 // 监听 toolMode 变化
 watch(() => store.toolMode, (newMode, oldMode) => {
   if (newMode !== oldMode) {
@@ -683,10 +718,6 @@ watch(() => store.toolMode, (newMode, oldMode) => {
     store.setPropertyPanelOpen(true)
     if (newMode === 'measure-angle') {
       drawHint.value = '点击地图选择起点'
-    } else if (newMode === 'measure-area') {
-      drawHint.value = '点击地图添加测量点，双击完成'
-    } else {
-      drawHint.value = '点击地图添加测量点，双击完成'
     }
   } else if (newMode.startsWith('draw-')) {
     if (newMode === 'draw-polygon') {
@@ -698,6 +729,15 @@ watch(() => store.toolMode, (newMode, oldMode) => {
     }
   } else {
     drawHint.value = ''
+  }
+})
+
+// 监听选中要素变化，高亮显示
+watch(() => store.selectedFeature, (feature) => {
+  if (feature && (feature.type === 'polyline' || feature.type === 'polygon' || feature.type === 'rectangle' || feature.type === 'circle')) {
+    highlightFeature(feature)
+  } else {
+    clearHighlight()
   }
 })
 
@@ -721,7 +761,6 @@ watch(() => [...store.layers], (newLayers) => {
         },
       }).addTo(geoLayerGroup)
     } else if (layer.type === 'heatmap') {
-      // 从 GeoJSON 数据中提取点坐标用于热力图
       const points: [number, number, number][] = []
       const data = layer.data as any
       if (data.type === 'FeatureCollection') {
@@ -744,7 +783,6 @@ watch(() => [...store.layers], (newLayers) => {
         ;(L as any).heatLayer(points, { radius, blur: 15, maxZoom: 17, gradient: { 0.4: '#00f', 0.6: '#0f0', 0.8: '#ff0', 1.0: '#f00' } }).addTo(geoLayerGroup)
       }
     } else if (layer.type === 'cluster') {
-      // 从 GeoJSON 数据中提取点用于聚合显示
       const clusterGroup = (L as any).markerClusterGroup({
         maxClusterRadius: 50,
         spiderfyOnMaxZoom: true,
@@ -803,17 +841,6 @@ function contextCopyCoords() {
   })
 }
 
-function contextStartMeasure() {
-  const latlng = contextMenu.value.latlng
-  contextMenu.value.visible = false
-  store.setToolMode('measure-distance')
-  // 需要等 mode 切换后再添加点
-  setTimeout(() => {
-    measureTempPoints.push(latlng)
-    drawHint.value = '已选择起点，继续点击添加测量点，双击完成'
-  }, 50)
-}
-
 function contextZoomIn() {
   contextMenu.value.visible = false
   mapInstance.value?.zoomIn()
@@ -827,7 +854,7 @@ function contextZoomOut() {
 function contextCenterHere() {
   const latlng = contextMenu.value.latlng
   contextMenu.value.visible = false
-  mapInstance.value?.setView(latlng, mapInstance.value.getZoom())
+  mapInstance.value?.setView(latlng, mapInstance.value!.getZoom())
 }
 
 const showBasemapSwitcher = ref(false)
@@ -876,10 +903,18 @@ const showBasemapSwitcher = ref(false)
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
         复制坐标
       </button>
-      <button @click="contextStartMeasure" class="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 transition-colors flex items-center gap-2">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h5"/><path d="M17 12h5"/><path d="M12 2v5"/><path d="M12 17v5"/></svg>
-        从此点测距
-      </button>
+      <!-- 选中图形的测量选项 -->
+      <template v-if="canMeasureDistance || canMeasureArea">
+        <div class="border-t border-gray-700 my-1"></div>
+        <button v-if="canMeasureDistance" @click="contextMeasureDistance" class="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 transition-colors flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h5"/><path d="M17 12h5"/><path d="M7 12a5 5 0 0 1 10 0"/><path d="M2 12v3"/><path d="M22 12v3"/></svg>
+          测量距离
+        </button>
+        <button v-if="canMeasureArea" @click="contextMeasureArea" class="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 transition-colors flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7 7"/><path d="M3 3v6"/><path d="M3 3h6"/><path d="M21 21l-7-7"/><path d="M21 21v-6"/><path d="M21 21h-6"/><rect x="7" y="7" width="10" height="10" rx="1" opacity="0.3"/></svg>
+          测量面积
+        </button>
+      </template>
       <div class="border-t border-gray-700 my-1"></div>
       <button @click="contextCenterHere" class="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 transition-colors flex items-center gap-2">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/></svg>
@@ -911,13 +946,7 @@ const showBasemapSwitcher = ref(false)
       </button>
       <!-- 分隔线 -->
       <div class="w-7 mx-auto border-t border-gray-600 my-0.5"></div>
-      <!-- 测量工具 -->
-      <button @click="store.setToolMode(store.toolMode === 'measure-distance' ? 'pan' : 'measure-distance')" class="w-9 h-9 rounded flex items-center justify-center transition-colors text-white" :class="store.toolMode === 'measure-distance' ? 'bg-emerald-600 border border-emerald-500' : 'bg-gray-800/90 backdrop-blur border border-gray-600 hover:bg-gray-700'" title="测距">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h5"/><path d="M17 12h5"/><path d="M7 12a5 5 0 0 1 10 0"/><path d="M2 12v3"/><path d="M22 12v3"/></svg>
-      </button>
-      <button @click="store.setToolMode(store.toolMode === 'measure-area' ? 'pan' : 'measure-area')" class="w-9 h-9 rounded flex items-center justify-center transition-colors text-white" :class="store.toolMode === 'measure-area' ? 'bg-emerald-600 border border-emerald-500' : 'bg-gray-800/90 backdrop-blur border border-gray-600 hover:bg-gray-700'" title="测面">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7 7"/><path d="M3 3v6"/><path d="M3 3h6"/><path d="M21 21l-7-7"/><path d="M21 21v-6"/><path d="M21 21h-6"/><rect x="7" y="7" width="10" height="10" rx="1" opacity="0.3"/></svg>
-      </button>
+      <!-- 测方位角 -->
       <button @click="store.setToolMode(store.toolMode === 'measure-angle' ? 'pan' : 'measure-angle')" class="w-9 h-9 rounded flex items-center justify-center transition-colors text-white" :class="store.toolMode === 'measure-angle' ? 'bg-emerald-600 border border-emerald-500' : 'bg-gray-800/90 backdrop-blur border border-gray-600 hover:bg-gray-700'" title="测方位角">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2v4"/><path d="M12 8v4"/><path d="M12 12l4 4"/></svg>
       </button>
