@@ -80,27 +80,28 @@ function applyGeoJsonToDrawFeatures(geojson: any) {
       const isCircle = properties.sub_type === 'circle' || properties.radius
       if (isCircle && properties.radius) {
         const radius = typeof properties.radius === 'number' ? properties.radius : 1000
-        L.circle(latlng, { radius, color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
-        store.addDrawFeature({ id, type: 'circle', coordinates: [latlng, latlng], properties: { ...properties, name: properties.name || `圆 ${featureCounter}`, radius }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+        const feat = { id, type: 'circle' as const, coordinates: [latlng, latlng] as [number, number][], properties: { ...properties, name: properties.name || `圆 ${featureCounter}`, radius }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } }
+        const layer = L.circle(latlng, { radius, color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
+        bindShapeEvents(layer, feat)
+        store.addDrawFeature(feat)
       } else {
+        const feat = { id, type: 'marker' as const, coordinates: latlng, properties: { ...properties, name: properties.name || `标注点 ${featureCounter}` }, style: {} }
         const marker = L.marker(latlng).addTo(drawLayerGroup)
         marker.bindTooltip(properties.name || `标注点 ${featureCounter}`, { permanent: false }).openTooltip()
         marker.on('click', (ev: L.LeafletEvent) => {
           L.DomEvent.stopPropagation(ev)
-          store.setSelectedFeature({ id, type: 'marker', coordinates: latlng, properties: { ...properties, name: properties.name || `标注点 ${featureCounter}` }, style: {} })
+          store.setSelectedFeature(feat)
           store.setPropertyPanelOpen(true)
         })
-        store.addDrawFeature({ id, type: 'marker', coordinates: latlng, properties: { ...properties, name: properties.name || `标注点 ${featureCounter}` }, style: {} })
+        store.addDrawFeature(feat)
       }
     } else if (geometry.type === 'LineString') {
       const coordinates: [number, number][] = (geometry.coordinates as [number, number][]).map((c: [number, number]) => [c[1], c[0]] as [number, number])
       const featProps = { ...properties, name: properties.name || `线 ${featureCounter}` }
-      L.polyline(coordinates, { color: '#10b981', weight: 3 }).addTo(drawLayerGroup)
-        .on('click', (ev: L.LeafletEvent) => {
-          L.DomEvent.stopPropagation(ev)
-          store.setSelectedFeature({ id, type: 'polyline', coordinates, properties: featProps, style: { color: '#10b981', weight: 3 } })
-        })
-      store.addDrawFeature({ id, type: 'polyline', coordinates, properties: featProps, style: { color: '#10b981', weight: 3 } })
+      const feat = { id, type: 'polyline' as const, coordinates, properties: featProps, style: { color: '#10b981', weight: 3 } }
+      const layer = L.polyline(coordinates, { color: '#10b981', weight: 3 }).addTo(drawLayerGroup)
+      bindShapeEvents(layer, feat)
+      store.addDrawFeature(feat)
     } else if (geometry.type === 'Polygon') {
       let coordinates: [number, number][] = (geometry.coordinates[0] as [number, number][]).map((c: [number, number]) => [c[1], c[0]] as [number, number])
       // 去除 GeoJSON 闭合点（首尾重复），避免后续转换时重复闭合
@@ -116,20 +117,16 @@ function applyGeoJsonToDrawFeatures(geojson: any) {
         const radius = typeof properties.radius === 'number' ? properties.radius : 1000
         const center = coordinates[0]
         const featProps = { ...properties, name: properties.name || `圆 ${featureCounter}`, radius }
-        L.circle(center, { radius, color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
-          .on('click', (ev: L.LeafletEvent) => {
-            L.DomEvent.stopPropagation(ev)
-            store.setSelectedFeature({ id, type: 'circle', coordinates: [center, center], properties: featProps, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
-          })
-        store.addDrawFeature({ id, type: 'circle', coordinates: [center, center], properties: featProps, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+        const feat = { id, type: 'circle' as const, coordinates: [center, center] as [number, number][], properties: featProps, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } }
+        const layer = L.circle(center, { radius, color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
+        bindShapeEvents(layer, feat)
+        store.addDrawFeature(feat)
       } else {
         const featProps = { ...properties, name: properties.name || `多边形 ${featureCounter}` }
-        L.polygon(coordinates, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
-          .on('click', (ev: L.LeafletEvent) => {
-            L.DomEvent.stopPropagation(ev)
-            store.setSelectedFeature({ id, type: 'polygon', coordinates, properties: featProps, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
-          })
-        store.addDrawFeature({ id, type: 'polygon', coordinates, properties: featProps, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+        const feat = { id, type: 'polygon' as const, coordinates, properties: featProps, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } }
+        const layer = L.polygon(coordinates, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
+        bindShapeEvents(layer, feat)
+        store.addDrawFeature(feat)
       }
     }
   }
@@ -277,6 +274,26 @@ function fitWorld() { mapInstance.value?.fitWorld() }
 // 绘制逻辑
 let featureCounter = 0
 
+// 给图形图层绑定 click + contextmenu 事件（右键时自动选中，使右键菜单可显示测量选项）
+function bindShapeEvents(layer: L.Layer, feature: DrawFeature) {
+  layer.on('click', (ev: L.LeafletEvent) => {
+    L.DomEvent.stopPropagation(ev)
+    store.setSelectedFeature(feature)
+    store.setPropertyPanelOpen(true)
+  })
+  layer.on('contextmenu', (ev: L.LeafletMouseEvent) => {
+    L.DomEvent.stopPropagation(ev)
+    store.setSelectedFeature(feature)
+    // 手动显示右键菜单（因为 stopPropagation 阻止了冒泡到 map）
+    contextMenu.value = {
+      x: ev.containerPoint.x,
+      y: ev.containerPoint.y,
+      latlng: [ev.latlng.lat, ev.latlng.lng],
+      visible: true,
+    }
+  })
+}
+
 // ---- 多边形/折线 统一绘制引擎 ----
 // 用延迟点击判断替代 dblclick pop 补偿，彻底解决双击闭合问题
 const DBLCLICK_THRESHOLD = 250 // ms
@@ -368,12 +385,10 @@ function finishDrawPolygon() {
   if (drawTempPoints.length < 3) return
   const points = [...drawTempPoints]
   const id = `draw-${++featureCounter}`
-  L.polygon(points, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
-    .on('click', (ev: L.LeafletEvent) => {
-      L.DomEvent.stopPropagation(ev)
-      store.setSelectedFeature({ id, type: 'polygon', coordinates: points, properties: { name: `多边形 ${featureCounter}` }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
-    })
-  store.addDrawFeature({ id, type: 'polygon', coordinates: points, properties: { name: `多边形 ${featureCounter}` }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+  const feat = { id, type: 'polygon' as const, coordinates: points, properties: { name: `多边形 ${featureCounter}` }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } }
+  const layer = L.polygon(points, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
+  bindShapeEvents(layer, feat)
+  store.addDrawFeature(feat)
   drawTempPoints.length = 0
   clearPreview()
   drawHint.value = '多边形已绘制'
@@ -384,12 +399,10 @@ function finishDrawPolyline() {
   if (drawTempPoints.length < 2) return
   const points = [...drawTempPoints]
   const id = `draw-${++featureCounter}`
-  L.polyline(points, { color: '#10b981', weight: 3 }).addTo(drawLayerGroup)
-    .on('click', (ev: L.LeafletEvent) => {
-      L.DomEvent.stopPropagation(ev)
-      store.setSelectedFeature({ id, type: 'polyline', coordinates: points, properties: { name: `线 ${featureCounter}` }, style: { color: '#10b981', weight: 3 } })
-    })
-  store.addDrawFeature({ id, type: 'polyline', coordinates: points, properties: { name: `线 ${featureCounter}` }, style: { color: '#10b981', weight: 3 } })
+  const feat = { id, type: 'polyline' as const, coordinates: points, properties: { name: `线 ${featureCounter}` }, style: { color: '#10b981', weight: 3 } }
+  const layer = L.polyline(points, { color: '#10b981', weight: 3 }).addTo(drawLayerGroup)
+  bindShapeEvents(layer, feat)
+  store.addDrawFeature(feat)
   drawTempPoints.length = 0
   clearPreview()
   drawHint.value = '线段已绘制'
@@ -457,12 +470,10 @@ function processClick(mode: string, latlng: [number, number]) {
       const nw = bounds.getNorthWest()
       const se = bounds.getSouthEast()
       const corners: [number, number][] = [[nw.lat, nw.lng], [ne.lat, ne.lng], [se.lat, se.lng], [sw.lat, sw.lng]]
-      L.rectangle(bounds, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
-        .on('click', (ev: L.LeafletEvent) => {
-          L.DomEvent.stopPropagation(ev)
-          store.setSelectedFeature({ id, type: 'rectangle', coordinates: corners, properties: { name: `矩形 ${featureCounter}` }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
-        })
-      store.addDrawFeature({ id, type: 'rectangle', coordinates: corners, properties: { name: `矩形 ${featureCounter}` }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+      const feat = { id, type: 'rectangle' as const, coordinates: corners, properties: { name: `矩形 ${featureCounter}` }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } }
+      const layer = L.rectangle(bounds, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
+      bindShapeEvents(layer, feat)
+      store.addDrawFeature(feat)
       drawTempPoints.length = 0
       clearPreview()
       drawHint.value = '矩形已绘制'
@@ -482,12 +493,10 @@ function processClick(mode: string, latlng: [number, number]) {
       const center = L.latLng(points[0])
       const edge = L.latLng(points[1])
       const radius = center.distanceTo(edge)
-      L.circle(points[0], { radius, color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
-        .on('click', (ev: L.LeafletEvent) => {
-          L.DomEvent.stopPropagation(ev)
-          store.setSelectedFeature({ id, type: 'circle', coordinates: points, properties: { name: `圆 ${featureCounter}`, radius }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
-        })
-      store.addDrawFeature({ id, type: 'circle', coordinates: points, properties: { name: `圆 ${featureCounter}`, radius }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } })
+      const feat = { id, type: 'circle' as const, coordinates: points, properties: { name: `圆 ${featureCounter}`, radius }, style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 } }
+      const layer = L.circle(points[0], { radius, color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
+      bindShapeEvents(layer, feat)
+      store.addDrawFeature(feat)
       drawTempPoints.length = 0
       clearPreview()
       drawHint.value = '圆已绘制'
