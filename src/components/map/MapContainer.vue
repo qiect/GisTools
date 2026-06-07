@@ -155,11 +155,8 @@ const cursorClass = computed(() => {
 
 const canFinish = computed(() => {
   const mode = store.toolMode
-  if (mode === 'draw-polygon' && drawTempPoints.length >= 3) return true
-  if (mode === 'draw-polyline' && drawTempPoints.length >= 2) return true
-  if (mode === 'measure-area' && measureTempPoints.length >= 3) return true
-  if (mode === 'measure-distance' && measureTempPoints.length >= 2) return true
-  return false
+  if (!isPolygonMode(mode)) return false
+  return getTempPoints(mode).length >= getMinPoints(mode)
 })
 
 function finishCurrent() {
@@ -202,12 +199,11 @@ onMounted(() => {
   // 双击完成绘制/测量
   map.on('dblclick', (e: L.LeafletMouseEvent) => {
     e.originalEvent.preventDefault()
-    handleDblClick(e)
+    handleDblClickFinish(e)
   })
 
   // 地图点击事件
   map.on('click', (e: L.LeafletMouseEvent) => {
-    // 关闭右键菜单
     contextMenu.value.visible = false
     handleMapClick(e)
   })
@@ -280,12 +276,96 @@ function fitWorld() { mapInstance.value?.fitWorld() }
 // 绘制逻辑
 let featureCounter = 0
 
-// 完成绘制（双击或按 Enter 闭合）
-function finishDrawPolygon() {
-  if (drawTempPoints.length < 3) {
-    drawHint.value = '至少需要 3 个点才能完成多边形'
+// ---- 多边形/面积 统一绘制引擎 ----
+// 用延迟点击判断替代 dblclick pop 补偿，彻底解决双击闭合问题
+const DBLCLICK_THRESHOLD = 250 // ms
+let clickTimer: ReturnType<typeof setTimeout> | null = null
+let pendingClickLatlng: [number, number] | null = null
+
+// 需要双击完成的模式
+const POLYGON_MODES = new Set(['draw-polygon', 'draw-polyline', 'measure-distance', 'measure-area'])
+
+function isPolygonMode(mode: string): mode is 'draw-polygon' | 'draw-polyline' | 'measure-distance' | 'measure-area' {
+  return POLYGON_MODES.has(mode)
+}
+
+function getTempPoints(mode: string): [number, number][] {
+  return mode.startsWith('draw-') ? drawTempPoints : measureTempPoints
+}
+
+function getMinPoints(mode: string): number {
+  return (mode === 'draw-polygon' || mode === 'measure-area') ? 3 : 2
+}
+
+// 延迟处理 click：若在阈值内收到 dblclick 则取消添加点并完成，否则正常添加
+function handleDelayedClick(mode: string, latlng: [number, number]) {
+  pendingClickLatlng = latlng
+  if (clickTimer) clearTimeout(clickTimer)
+  clickTimer = setTimeout(() => {
+    clickTimer = null
+    pendingClickLatlng = null
+    addPointAndPreview(mode, latlng)
+  }, DBLCLICK_THRESHOLD)
+}
+
+// 添加点并更新预览 + 提示
+function addPointAndPreview(mode: string, latlng: [number, number]) {
+  const points = getTempPoints(mode)
+  points.push(latlng)
+  updatePreview(mode)
+  const count = points.length
+  const min = getMinPoints(mode)
+  drawHint.value = count < min
+    ? `已点击 ${count} 个点，至少需要 ${min} 个点。继续点击添加点`
+    : `已点击 ${count} 个点。双击完成${mode.startsWith('measure') ? '测量' : '绘制'}，继续点击添加点`
+}
+
+// 统一更新预览
+function updatePreview(mode: string) {
+  if (!mapInstance.value) return
+  clearPreview()
+  const points = [...getTempPoints(mode)]
+  if (points.length < 2) return
+
+  const isDraw = mode.startsWith('draw-')
+  const color = isDraw ? '#10b981' : '#f59e0b'
+  const fillOpacity = isDraw ? 0.1 : 0.08
+
+  if (mode === 'draw-polyline' || mode === 'measure-distance') {
+    previewLayer = L.polyline(points, { color, weight: 2, dashArray: '4 4', opacity: 0.6 }).addTo(mapInstance.value)
+  } else {
+    previewLayer = L.polygon(points, { color, fillColor: color, fillOpacity, weight: 2, dashArray: '4 4' }).addTo(mapInstance.value)
+  }
+}
+
+// 双击完成
+function handleDblClickFinish(_e: L.LeafletMouseEvent) {
+  const mode = store.toolMode
+  if (!isPolygonMode(mode)) return
+
+  // 取消延迟的 click 添加，双击位置不添加新点
+  if (clickTimer) {
+    clearTimeout(clickTimer)
+    clickTimer = null
+    pendingClickLatlng = null
+  }
+
+  const points = getTempPoints(mode)
+  const min = getMinPoints(mode)
+  if (points.length < min) {
+    drawHint.value = `至少需要 ${min} 个点才能完成`
     return
   }
+
+  if (mode === 'draw-polygon') finishDrawPolygon()
+  else if (mode === 'draw-polyline') finishDrawPolyline()
+  else if (mode === 'measure-area') finishMeasureArea()
+  else if (mode === 'measure-distance') finishMeasureDistance()
+}
+
+// ---- 完成绘制 ----
+function finishDrawPolygon() {
+  if (drawTempPoints.length < 3) return
   const points = [...drawTempPoints]
   const id = `draw-${++featureCounter}`
   L.polygon(points, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }).addTo(drawLayerGroup)
@@ -301,10 +381,7 @@ function finishDrawPolygon() {
 }
 
 function finishDrawPolyline() {
-  if (drawTempPoints.length < 2) {
-    drawHint.value = '至少需要 2 个点才能完成线段'
-    return
-  }
+  if (drawTempPoints.length < 2) return
   const points = [...drawTempPoints]
   const id = `draw-${++featureCounter}`
   L.polyline(points, { color: '#10b981', weight: 3 }).addTo(drawLayerGroup)
@@ -320,10 +397,7 @@ function finishDrawPolyline() {
 }
 
 function finishMeasureArea() {
-  if (measureTempPoints.length < 3) {
-    drawHint.value = '至少需要 3 个点才能完成面积测量'
-    return
-  }
+  if (measureTempPoints.length < 3) return
   const points = [...measureTempPoints]
   measureLayerGroup.clearLayers()
   const result = calcArea(points)
@@ -339,10 +413,7 @@ function finishMeasureArea() {
 }
 
 function finishMeasureDistance() {
-  if (measureTempPoints.length < 2) {
-    drawHint.value = '至少需要 2 个点才能完成距离测量'
-    return
-  }
+  if (measureTempPoints.length < 2) return
   const points = [...measureTempPoints]
   measureLayerGroup.clearLayers()
   const result = calcDistance(points)
@@ -357,100 +428,21 @@ function finishMeasureDistance() {
   setTimeout(() => { drawHint.value = '' }, 3000)
 }
 
-function handleDblClick(_e: L.LeafletMouseEvent) {
-  const mode = store.toolMode
-  const points = mode.startsWith('draw-') ? drawTempPoints : measureTempPoints
-
-  // 双击会先触发两次 click，每次 click 都会通过 addPointToMode 添加一个点
-  // 双击的两次 click 坐标非常接近：
-  //   - 第1次 click 代表用户想在双击位置完成，保留为有效点
-  //   - 第2次 click 是纯重复，需要移除
-  if (points.length >= 1) {
-    points.pop() // 移除 dblclick 的第2次 click 添加的重复点
-  }
-
-  // 双击完成绘制/测量
-  if (mode === 'measure-area' && measureTempPoints.length >= 3) finishMeasureArea()
-  else if (mode === 'draw-polygon' && drawTempPoints.length >= 3) finishDrawPolygon()
-  else if (mode === 'draw-polyline' && drawTempPoints.length >= 2) finishDrawPolyline()
-  else if (mode === 'measure-distance' && measureTempPoints.length >= 2) finishMeasureDistance()
-}
-
+// 地图点击事件
 function handleMapClick(e: L.LeafletMouseEvent) {
   const mode = store.toolMode
   if (mode === 'pan') return
 
   const latlng: [number, number] = [e.latlng.lat, e.latlng.lng]
 
-  // 需要双击完成的模式：立即添加点以提供视觉反馈
-  const dblClickModes = ['draw-polyline', 'draw-polygon', 'measure-distance', 'measure-area']
-  if (dblClickModes.includes(mode)) {
-    addPointToMode(mode, latlng)
+  // 需要双击完成的模式：延迟添加点，避免与 dblclick 冲突
+  if (isPolygonMode(mode)) {
+    handleDelayedClick(mode, latlng)
     return
   }
 
   // 以下模式不需要双击完成，直接处理
   processClick(mode, latlng)
-}
-
-// 添加点到当前模式的临时数组并更新预览
-function addPointToMode(mode: string, latlng: [number, number]) {
-  if (mode.startsWith('draw-')) {
-    drawTempPoints.push(latlng)
-  } else {
-    measureTempPoints.push(latlng)
-  }
-
-  // 更新预览
-  const points = mode.startsWith('draw-') ? [...drawTempPoints] : [...measureTempPoints]
-  if (mode === 'draw-polyline' && points.length >= 2) {
-    updateDrawPreview(mode, points)
-    drawHint.value = `已点击 ${drawTempPoints.length} 个点。双击完成绘制，继续点击添加点`
-  } else if (mode === 'draw-polygon') {
-    updateDrawPreview(mode, points)
-    const count = drawTempPoints.length
-    drawHint.value = count < 3
-      ? `已点击 ${count} 个点，至少需要 3 个点。继续点击添加点`
-      : `已点击 ${count} 个点。双击完成绘制，继续点击添加点`
-  } else if (mode === 'measure-distance') {
-    if (points.length >= 2) {
-      measureLayerGroup.clearLayers()
-      const result = calcDistance(points as [number, number][])
-      L.polyline(points, { color: '#f59e0b', weight: 3, dashArray: '8 4' })
-        .bindTooltip(`${result.value.toFixed(2)} ${result.unit}`, { permanent: true })
-        .addTo(measureLayerGroup)
-      store.clearMeasureResults()
-      store.addMeasureResult({ type: 'distance', value: result.value, unit: result.unit, coordinates: [...points] as [number, number][] })
-    }
-    drawHint.value = `已点击 ${measureTempPoints.length} 个点。双击完成测量，继续点击添加点`
-  } else if (mode === 'measure-area') {
-    // 与 draw-polygon 一样使用 previewLayer 做虚线预览
-    updateMeasurePreview(points)
-    const count = measureTempPoints.length
-    drawHint.value = count < 3
-      ? `已点击 ${count} 个点，至少需要 3 个点。继续点击添加点`
-      : `已点击 ${count} 个点。双击完成测量，继续点击添加点`
-  }
-}
-
-// 更新测量预览（虚线多边形）
-function updateMeasurePreview(points: [number, number][]) {
-  if (!mapInstance.value) return
-  clearPreview()
-  if (points.length >= 2) {
-    previewLayer = L.polygon(points, { color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.1, weight: 2, dashArray: '4 4' }).addTo(mapInstance.value)
-  }
-}
-
-// 更新绘制预览
-function updateDrawPreview(mode: string, points: [number, number][]) {
-  if (!mapInstance.value) return
-  clearPreview()
-  if (mode === 'draw-polyline' && points.length >= 2) {
-    previewLayer = L.polyline(points, { color: '#10b981', weight: 2, dashArray: '4 4', opacity: 0.6 }).addTo(mapInstance.value)
-  } else if (mode === 'draw-polygon' && points.length >= 2) {
-    previewLayer = L.polygon(points, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.1, weight: 2, dashArray: '4 4' }).addTo(mapInstance.value)
-  }
 }
 
 // 不需要双击完成的模式直接处理
@@ -485,8 +477,6 @@ function processClick(mode: string, latlng: [number, number]) {
     textInputVisible.value = true
     return
   }
-
-  // ---- 画线、画多边形、测距、测面已移至 addPointToMode（延迟点击处理）----
 
   // ---- 画矩形 ----
   if (mode === 'draw-rectangle') {
@@ -603,17 +593,28 @@ function handleMouseMove(e: L.LeafletMouseEvent) {
   if (!mapInstance.value) return
   const latlng: [number, number] = [e.latlng.lat, e.latlng.lng]
 
-  // 绘制预览
+  // 多边形/折线/测距/测面：使用统一预览 + 鼠标跟随点
+  if (isPolygonMode(mode)) {
+    const points = getTempPoints(mode)
+    if (points.length > 0) {
+      clearPreview()
+      const allPoints = [...points, latlng]
+      const isDraw = mode.startsWith('draw-')
+      const color = isDraw ? '#10b981' : '#f59e0b'
+      const fillOpacity = isDraw ? 0.1 : 0.08
+
+      if (mode === 'draw-polyline' || mode === 'measure-distance') {
+        previewLayer = L.polyline(allPoints, { color, weight: 2, dashArray: '4 4', opacity: 0.6 }).addTo(mapInstance.value)
+      } else {
+        previewLayer = L.polygon(allPoints, { color, fillColor: color, fillOpacity, weight: 2, dashArray: '4 4' }).addTo(mapInstance.value)
+      }
+    }
+    return
+  }
+
+  // 绘制预览（矩形、圆等非双击完成模式）
   if (mode.startsWith('draw-') && drawTempPoints.length > 0 && mode !== 'draw-marker' && mode !== 'draw-text') {
     clearPreview()
-    const points = [...drawTempPoints, latlng]
-
-    if (mode === 'draw-polyline' && points.length >= 2) {
-      previewLayer = L.polyline(points, { color: '#10b981', weight: 2, dashArray: '4 4', opacity: 0.6 }).addTo(mapInstance.value)
-    }
-    if (mode === 'draw-polygon' && points.length >= 2) {
-      previewLayer = L.polygon(points, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.1, weight: 2, dashArray: '4 4' }).addTo(mapInstance.value)
-    }
     if (mode === 'draw-rectangle' && drawTempPoints.length >= 1) {
       const bounds = L.latLngBounds(drawTempPoints[0], latlng)
       previewLayer = L.rectangle(bounds, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.1, weight: 2, dashArray: '4 4' }).addTo(mapInstance.value)
@@ -625,20 +626,10 @@ function handleMouseMove(e: L.LeafletMouseEvent) {
     }
   }
 
-  // 测量预览
-  if (mode.startsWith('measure-') && measureTempPoints.length > 0) {
+  // 测方位角预览
+  if (mode === 'measure-angle' && measureTempPoints.length > 0) {
     clearPreview()
-    const points = [...measureTempPoints, latlng]
-
-    if (mode === 'measure-distance' && points.length >= 2) {
-      previewLayer = L.polyline(points, { color: '#f59e0b', weight: 2, dashArray: '4 4', opacity: 0.6 }).addTo(mapInstance.value)
-    }
-    if (mode === 'measure-area' && points.length >= 2) {
-      previewLayer = L.polygon(points, { color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.08, weight: 2, dashArray: '4 4' }).addTo(mapInstance.value)
-    }
-    if (mode === 'measure-angle' && points.length >= 2) {
-      previewLayer = L.polyline([measureTempPoints[0], latlng], { color: '#f59e0b', weight: 2, dashArray: '4 4', opacity: 0.6 }).addTo(mapInstance.value)
-    }
+    previewLayer = L.polyline([measureTempPoints[0], latlng], { color: '#f59e0b', weight: 2, dashArray: '4 4', opacity: 0.6 }).addTo(mapInstance.value)
   }
 }
 
@@ -652,6 +643,12 @@ function clearPreview() {
 // 监听 toolMode 变化
 watch(() => store.toolMode, (newMode, oldMode) => {
   if (newMode !== oldMode) {
+    // 切换模式时清除延迟点击定时器
+    if (clickTimer) {
+      clearTimeout(clickTimer)
+      clickTimer = null
+      pendingClickLatlng = null
+    }
     drawTempPoints.length = 0
     measureTempPoints.length = 0
     clearPreview()
