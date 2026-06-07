@@ -623,7 +623,7 @@ function highlightFeature(feature: DrawFeature) {
   if (!mapInstance.value) return
   clearHighlight()
   const coords = feature.coordinates as [number, number][]
-  const highlightStyle = { color: '#f59e0b', weight: 4, opacity: 0.9 }
+  const highlightStyle = { color: '#f59e0b', weight: 4, opacity: 0.9, interactive: false }
 
   if (feature.type === 'polyline') {
     highlightLayer = L.polyline(coords, { ...highlightStyle, dashArray: '8 4' }).addTo(mapInstance.value)
@@ -654,31 +654,33 @@ function contextMeasureDistance() {
 
   highlightFeature(feature)
   const coords = feature.coordinates as [number, number][]
+  let result: { value: number; unit: string }
 
   if (feature.type === 'polyline') {
-    const result = calcDistance(coords)
-    store.clearMeasureResults()
-    store.addMeasureResult({ type: 'distance', value: result.value, unit: result.unit, coordinates: [...coords] })
-    showToast(`距离: ${result.value.toFixed(2)} ${result.unit}`)
+    result = calcDistance(coords)
   } else if (feature.type === 'polygon' || feature.type === 'rectangle') {
-    // 闭合多边形周长
     const closedCoords = [...coords, coords[0]]
-    const result = calcDistance(closedCoords)
-    store.clearMeasureResults()
-    store.addMeasureResult({ type: 'distance', value: result.value, unit: result.unit, coordinates: closedCoords })
-    showToast(`周长: ${result.value.toFixed(2)} ${result.unit}`)
+    result = calcDistance(closedCoords)
   } else if (feature.type === 'circle') {
     const radius = Number(feature.properties?.radius ?? 1000)
     const circumference = 2 * Math.PI * radius
-    const result = circumference < 1000
+    result = circumference < 1000
       ? { value: circumference, unit: 'm' }
       : { value: circumference / 1000, unit: 'km' }
-    store.clearMeasureResults()
-    store.addMeasureResult({ type: 'distance', value: result.value, unit: result.unit, coordinates: [...coords] })
-    showToast(`周长: ${result.value.toFixed(2)} ${result.unit}`)
+  } else {
+    return
   }
 
-  store.setPropertyPanelOpen(true)
+  // 写入属性，触发属性面板刷新
+  const label = feature.type === 'polyline' ? '距离' : '周长'
+  if (!feature.properties) feature.properties = {}
+  feature.properties[label] = `${result.value.toFixed(2)} ${result.unit}`
+  // 重新设置 selectedFeature 触发响应式更新
+  store.setSelectedFeature({ ...feature })
+
+  store.clearMeasureResults()
+  store.addMeasureResult({ type: 'distance', value: result.value, unit: result.unit, coordinates: [...coords] })
+  showToast(`${label}: ${result.value.toFixed(2)} ${result.unit}`)
 }
 
 function contextMeasureArea() {
@@ -688,24 +690,29 @@ function contextMeasureArea() {
 
   highlightFeature(feature)
   const coords = feature.coordinates as [number, number][]
+  let result: { value: number; unit: string }
 
   if (feature.type === 'polygon' || feature.type === 'rectangle') {
-    const result = calcArea(coords)
-    store.clearMeasureResults()
-    store.addMeasureResult({ type: 'area', value: result.value, unit: result.unit, coordinates: [...coords] })
-    showToast(`面积: ${result.value.toFixed(2)} ${result.unit}`)
+    result = calcArea(coords)
   } else if (feature.type === 'circle') {
     const radius = Number(feature.properties?.radius ?? 1000)
     const areaVal = Math.PI * radius * radius
-    const result = areaVal < 1e6
+    result = areaVal < 1e6
       ? { value: areaVal, unit: 'm²' }
       : { value: areaVal / 1e6, unit: 'km²' }
-    store.clearMeasureResults()
-    store.addMeasureResult({ type: 'area', value: result.value, unit: result.unit, coordinates: [...coords] })
-    showToast(`面积: ${result.value.toFixed(2)} ${result.unit}`)
+  } else {
+    return
   }
 
-  store.setPropertyPanelOpen(true)
+  // 写入属性，触发属性面板刷新
+  if (!feature.properties) feature.properties = {}
+  feature.properties['面积'] = `${result.value.toFixed(2)} ${result.unit}`
+  // 重新设置 selectedFeature 触发响应式更新
+  store.setSelectedFeature({ ...feature })
+
+  store.clearMeasureResults()
+  store.addMeasureResult({ type: 'area', value: result.value, unit: result.unit, coordinates: [...coords] })
+  showToast(`面积: ${result.value.toFixed(2)} ${result.unit}`)
 }
 
 // 监听 toolMode 变化
