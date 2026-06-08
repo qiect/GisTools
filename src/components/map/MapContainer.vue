@@ -29,10 +29,10 @@ const mapEl = ref<HTMLDivElement>()
 const mapInstance = shallowRef<L.Map | null>(null)
 
 const basemaps: Record<string, { url: string; attribution: string; label: string }> = {
-  amap: { url: 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', attribution: '&copy; 高德地图', label: '高德地图' },
-  amapSat: { url: 'https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}', attribution: '&copy; 高德地图', label: '高德卫星' },
-  amapSatLabel: { url: 'https://webst0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}', attribution: '&copy; 高德地图', label: '高德卫星(标注)' },
-  dark: { url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', attribution: '&copy; CartoDB', label: '暗色底图' },
+  amap: { url: '/amap/road?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', attribution: '&copy; 高德地图', label: '高德地图' },
+  amapSat: { url: '/amap/sat?style=6&x={x}&y={y}&z={z}', attribution: '&copy; 高德地图', label: '高德卫星' },
+  amapSatLabel: { url: '/amap/satlabel?style=8&x={x}&y={y}&z={z}', attribution: '&copy; 高德地图', label: '高德卫星(标注)' },
+  dark: { url: '/carto/dark_all/{z}/{x}/{y}.png', attribution: '&copy; CartoDB', label: '暗色底图' },
 }
 
 let currentTileLayer: L.TileLayer | null = null
@@ -188,7 +188,7 @@ onMounted(() => {
     zoomControl: false,
   })
 
-  currentTileLayer = L.tileLayer(basemaps.amap.url, { attribution: basemaps.amap.attribution, subdomains: '1234' }).addTo(map)
+  currentTileLayer = L.tileLayer(basemaps.amap.url, { attribution: basemaps.amap.attribution }).addTo(map)
   drawLayerGroup.addTo(map)
   measureLayerGroup.addTo(map)
   geoLayerGroup.addTo(map)
@@ -266,9 +266,7 @@ function handleMapWrapperClick(e: MouseEvent) {
 function switchBasemap(key: string) {
   if (!mapInstance.value || !basemaps[key]) return
   if (currentTileLayer) mapInstance.value.removeLayer(currentTileLayer)
-  const opts: L.TileLayerOptions = { attribution: basemaps[key].attribution }
-  if (key.startsWith('amap')) (opts as any).subdomains = '1234'
-  currentTileLayer = L.tileLayer(basemaps[key].url, opts).addTo(mapInstance.value)
+  currentTileLayer = L.tileLayer(basemaps[key].url, { attribution: basemaps[key].attribution }).addTo(mapInstance.value)
   activeBasemap.value = key
 }
 
